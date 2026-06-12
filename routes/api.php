@@ -32,6 +32,7 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::get('resumen-semanal', [CajaController::class, 'resumenSemanal']);
         Route::get('pedidos-activos', [CajaController::class, 'pedidosActivos']);
         Route::get('alertas-compra', [CajaController::class, 'alertasCompra']);
+        Route::get('historial/{caja}', [CajaController::class, 'show']);
     });
 
     // ── Inventario ───────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApi } from '@/composables/useApi';
 import { computed, onMounted, ref } from 'vue';
-import { Download, Lock, RefreshCw, Unlock } from 'lucide-vue-next';
+import { Download, Eye, Lock, RefreshCw, Unlock, X } from 'lucide-vue-next';
 
 interface Pago {
     metodo: string;
@@ -88,6 +88,30 @@ interface ResumenSemanal {
     cajas: Caja[];
 }
 
+interface ProductoTop {
+    nombre: string;
+    cantidad: number;
+    monto: number;
+}
+
+interface CajaDetalle {
+    caja: Caja;
+    ventas: Venta[];
+    stats_guardadas: {
+        cantidad_ventas: number;
+        total_monto: number;
+        total_efectivo: number;
+        total_transferencia: number;
+        costo_insumos: number;
+        ganancia_bruta: number;
+        gastos_fijos: number;
+        ganancia_neta: number;
+    };
+    resumen: {
+        productos_top?: ProductoTop[];
+    };
+}
+
 const { get, post, loading } = useApi();
 
 const data = ref<CajaData | null>(null);
@@ -95,6 +119,9 @@ const pedidosActivos = ref<Venta[]>([]);
 const alertasCompra = ref<any[]>([]);
 const historial = ref<Caja[]>([]);
 const resumenSemanal = ref<ResumenSemanal | null>(null);
+
+const cajaDetalle = ref<CajaDetalle | null>(null);
+const cargandoCajaDetalle = ref(false);
 
 const esAdmin = computed(() => data.value?.es_admin === true);
 const puedeOperarCaja = computed(() => data.value?.puede_operar_caja === true);
@@ -155,6 +182,22 @@ async function cerrarCaja() {
 
     await post('/api/caja/cerrar', {});
     await cargar();
+}
+
+async function verCajaGuardada(caja: Caja) {
+    cargandoCajaDetalle.value = true;
+
+    const res = await get<CajaDetalle>(`/api/caja/historial/${caja.id}`);
+
+    if (res) {
+        cajaDetalle.value = res;
+    }
+
+    cargandoCajaDetalle.value = false;
+}
+
+function cerrarDetalleCaja() {
+    cajaDetalle.value = null;
 }
 
 function exportar() {
@@ -548,6 +591,7 @@ onMounted(cargar);
                                 <th class="text-right p-3 font-medium">Efectivo</th>
                                 <th class="text-right p-3 font-medium">Transfer.</th>
                                 <th class="text-right p-3 font-medium">Ganancia neta</th>
+                                <th class="text-right p-3 font-medium">Acciones</th>
                             </tr>
                         </thead>
 
@@ -565,11 +609,244 @@ onMounted(cargar);
                                 <td class="p-3 text-right">{{ fmt(caja.total_efectivo) }}</td>
                                 <td class="p-3 text-right">{{ fmt(caja.total_transferencia) }}</td>
                                 <td class="p-3 text-right font-semibold">{{ fmt(caja.ganancia_neta) }}</td>
+                                <td class="p-3 text-right">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        @click="verCajaGuardada(caja)"
+                                        :disabled="cargandoCajaDetalle"
+                                    >
+                                        <Eye class="w-4 h-4 mr-1" />
+                                        Ver caja
+                                    </Button>
+                                </td>
                             </tr>
                         </tbody>
                     </table>
                 </CardContent>
             </Card>
+
+            <div
+                v-if="cajaDetalle"
+                class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+            >
+                <div class="bg-background border rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+                    <div class="p-4 border-b flex items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-lg font-semibold">
+                                Caja del {{ fecha(cajaDetalle.caja.fecha_operativa) }}
+                            </h2>
+
+                            <p class="text-xs text-muted-foreground mt-1">
+                                Estado: {{ cajaDetalle.caja.estado }}
+                                · Apertura: {{ horaVenta(cajaDetalle.caja.abierta_at) }}
+                                · Cierre: {{ horaVenta(cajaDetalle.caja.cerrada_at) }}
+                            </p>
+
+                            <p class="text-xs text-muted-foreground mt-1">
+                                Abierta por:
+                                {{ cajaDetalle.caja.abierta_por?.name ?? '—' }}
+                                · Cerrada por:
+                                {{ cajaDetalle.caja.cerrada_por?.name ?? '—' }}
+                            </p>
+                        </div>
+
+                        <button
+                            class="w-8 h-8 rounded-full border flex items-center justify-center hover:bg-muted"
+                            @click="cerrarDetalleCaja"
+                        >
+                            <X class="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <div class="p-4 overflow-y-auto flex flex-col gap-4">
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Ventas</p>
+                                    <p class="text-xl font-semibold">
+                                        {{ cajaDetalle.stats_guardadas.cantidad_ventas }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Total vendido</p>
+                                    <p class="text-xl font-semibold">
+                                        {{ fmt(cajaDetalle.stats_guardadas.total_monto) }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Efectivo</p>
+                                    <p class="text-xl font-semibold">
+                                        {{ fmt(cajaDetalle.stats_guardadas.total_efectivo) }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Transferencia</p>
+                                    <p class="text-xl font-semibold">
+                                        {{ fmt(cajaDetalle.stats_guardadas.total_transferencia) }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Costo insumos</p>
+                                    <p class="text-xl font-semibold text-destructive">
+                                        {{ fmt(cajaDetalle.stats_guardadas.costo_insumos) }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Ganancia bruta</p>
+                                    <p class="text-xl font-semibold">
+                                        {{ fmt(cajaDetalle.stats_guardadas.ganancia_bruta) }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Gastos fijos</p>
+                                    <p class="text-xl font-semibold text-destructive">
+                                        {{ fmt(cajaDetalle.stats_guardadas.gastos_fijos) }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent class="p-4">
+                                    <p class="text-xs text-muted-foreground mb-1">Ganancia neta</p>
+                                    <p
+                                        class="text-xl font-semibold"
+                                        :class="Number(cajaDetalle.stats_guardadas.ganancia_neta) >= 0
+                                            ? 'text-green-600'
+                                            : 'text-destructive'"
+                                    >
+                                        {{ fmt(cajaDetalle.stats_guardadas.ganancia_neta) }}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card v-if="cajaDetalle.resumen?.productos_top?.length">
+                            <CardHeader class="pb-2">
+                                <CardTitle class="text-sm">Productos más vendidos</CardTitle>
+                            </CardHeader>
+
+                            <CardContent class="p-0">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b text-xs text-muted-foreground">
+                                            <th class="text-left p-3 font-medium">Producto</th>
+                                            <th class="text-right p-3 font-medium">Cantidad</th>
+                                            <th class="text-right p-3 font-medium">Monto</th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody>
+                                        <tr
+                                            v-for="p in cajaDetalle.resumen.productos_top"
+                                            :key="p.nombre"
+                                            class="border-b last:border-0"
+                                        >
+                                            <td class="p-3">{{ p.nombre }}</td>
+                                            <td class="p-3 text-right">{{ p.cantidad }}</td>
+                                            <td class="p-3 text-right font-semibold">{{ fmt(p.monto) }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader class="pb-2">
+                                <CardTitle class="text-sm">Ventas de esta caja</CardTitle>
+                            </CardHeader>
+
+                            <CardContent class="p-0">
+                                <div
+                                    v-if="!cajaDetalle.ventas.length"
+                                    class="p-4 text-sm text-muted-foreground text-center"
+                                >
+                                    Esta caja no tiene ventas asociadas.
+                                </div>
+
+                                <table v-else class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b text-xs text-muted-foreground">
+                                            <th class="text-left p-3 font-medium">#</th>
+                                            <th class="text-left p-3 font-medium">Hora</th>
+                                            <th class="text-left p-3 font-medium">Mesa</th>
+                                            <th class="text-left p-3 font-medium">Detalle</th>
+                                            <th class="text-left p-3 font-medium">Pago</th>
+                                            <th class="text-right p-3 font-medium">Total</th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody>
+                                        <tr
+                                            v-for="venta in cajaDetalle.ventas"
+                                            :key="venta.id"
+                                            class="border-b last:border-0 hover:bg-muted/50"
+                                        >
+                                            <td class="p-3 font-bold">#{{ venta.numero_orden }}</td>
+
+                                            <td class="p-3 text-muted-foreground">
+                                                {{ horaVenta(venta.created_at) }}
+                                            </td>
+
+                                            <td class="p-3">
+                                                {{ venta.mesa ?? '—' }}
+                                            </td>
+
+                                            <td class="p-3">
+                                                <div class="flex flex-col gap-0.5">
+                                                    <span
+                                                        v-for="d in venta.detalles"
+                                                        :key="d.nombre_snapshot"
+                                                        class="text-xs"
+                                                    >
+                                                        {{ d.cantidad }}x {{ d.nombre_snapshot }}
+                                                    </span>
+                                                </div>
+                                            </td>
+
+                                            <td class="p-3">
+                                                <div class="flex flex-col gap-0.5">
+                                                    <span
+                                                        v-for="p in venta.pagos"
+                                                        :key="p.metodo"
+                                                        class="text-xs capitalize"
+                                                    >
+                                                        {{ p.metodo }}: {{ fmt(p.monto) }}
+                                                    </span>
+                                                </div>
+                                            </td>
+
+                                            <td class="p-3 text-right font-semibold">
+                                                {{ fmt(venta.total) }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </CardContent>
+                        </Card>
+                    </div>
+                </div>
+            </div>
         </div>
     </AppLayout>
 </template>

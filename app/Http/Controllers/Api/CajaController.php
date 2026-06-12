@@ -161,6 +161,54 @@ class CajaController extends Controller
         return response()->json($cajas);
     }
 
+    public function show(Caja $caja): JsonResponse
+    {
+        $user = Auth::user();
+
+        if (!$user->isAdmin()) {
+            return response()->json([
+                'message' => 'Solo el administrador puede ver cajas guardadas.',
+            ], 403);
+        }
+
+        $caja->load(['abiertaPor:id,name', 'cerradaPor:id,name']);
+
+        $ventas = Venta::where('caja_id', $caja->id)
+            ->with(['detalles', 'pagos', 'user:id,name'])
+            ->orderByDesc('created_at')
+            ->get();
+
+        /*
+         * Fallback para cajas viejas:
+         * si la caja tiene cantidad_ventas pero las ventas todavía no quedaron asociadas
+         * por caja_id, intenta recuperar lo facturado por fecha operativa.
+         */
+        if ($ventas->isEmpty() && (int) $caja->cantidad_ventas > 0) {
+            $fechaOperativa = Carbon::parse($caja->fecha_operativa)->toDateString();
+
+            $ventas = Venta::whereDate('created_at', $fechaOperativa)
+                ->with(['detalles', 'pagos', 'user:id,name'])
+                ->orderByDesc('created_at')
+                ->get();
+        }
+
+        return response()->json([
+            'caja' => $caja,
+            'ventas' => $ventas,
+            'stats_guardadas' => [
+                'cantidad_ventas' => $caja->cantidad_ventas,
+                'total_monto' => $caja->total_ventas,
+                'total_efectivo' => $caja->total_efectivo,
+                'total_transferencia' => $caja->total_transferencia,
+                'costo_insumos' => $caja->costo_insumos,
+                'ganancia_bruta' => $caja->ganancia_bruta,
+                'gastos_fijos' => $caja->gastos_fijos,
+                'ganancia_neta' => $caja->ganancia_neta,
+            ],
+            'resumen' => $caja->resumen_json ?? [],
+        ]);
+    }
+
     public function resumenSemanal(Request $request): JsonResponse
     {
         $base = $request->get('fecha')

@@ -9,6 +9,7 @@ use App\Models\Venta;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 class PosController extends Controller
 {
@@ -42,23 +43,70 @@ class PosController extends Controller
     // POST /api/pos/venta
     public function registrarVenta(Request $request): JsonResponse
     {
-        $request->validate([
-            'mesa'                 => 'nullable|string|max:50',
-            'descuento'            => 'nullable|numeric|min:0',
-            'notas'                => 'nullable|string',
-            'pagos'                => 'required|array|min:1',
-            'pagos.*.metodo'       => 'required|in:efectivo,transferencia',
-            'pagos.*.monto'        => 'required|numeric|min:0',
-            'items'                => 'required|array|min:1',
-            'items.*.variante_id'  => 'required|exists:variantes,id',
-            'items.*.cantidad'     => 'required|integer|min:1',
-            'items.*.descuento'    => 'nullable|numeric|min:0',
+        $data = $request->validate([
+            'mesa'                => 'nullable|string|max:50',
+            'descuento'           => 'nullable|numeric|min:0',
+            'notas'               => 'nullable|string',
+
+            'pagos'               => 'required|array|min:1',
+            'pagos.*.metodo'      => 'required|in:efectivo,transferencia',
+            'pagos.*.monto'       => 'required|numeric|min:0',
+
+            'items'               => 'required_without:combos|array|min:1',
+            'items.*.variante_id' => 'required|exists:variantes,id',
+            'items.*.cantidad'    => 'required|integer|min:1',
+            'items.*.descuento'   => 'nullable|numeric|min:0',
+
+            'combos'              => 'required_without:items|array|min:1',
+            'combos.*.combo_id'   => 'required|exists:combos,id',
+            'combos.*.cantidad'   => 'required|integer|min:1',
         ]);
+
+        $items = collect($data['items'] ?? [])
+            ->map(fn ($item) => [
+                'variante_id' => $item['variante_id'],
+                'cantidad'    => $item['cantidad'],
+                'descuento'   => $item['descuento'] ?? 0,
+            ]);
+
+        $comboRequests = collect($data['combos'] ?? []);
+
+        if ($comboRequests->isNotEmpty()) {
+            $comboIds = $comboRequests
+                ->pluck('combo_id')
+                ->unique()
+                ->values();
+
+            $combos = Combo::activo()
+                ->with(['items.variante.producto'])
+                ->whereIn('id', $comboIds)
+                ->get()
+                ->keyBy('id');
+
+            if ($combos->count() !== $comboIds->count()) {
+                throw ValidationException::withMessages([
+                    'combos' => 'Uno o más combos no existen o no están activos.',
+                ]);
+            }
+
+            foreach ($comboRequests as $comboRequest) {
+                $combo = $combos[$comboRequest['combo_id']];
+                $cantidadCombo = (int) $comboRequest['cantidad'];
+
+                foreach ($combo->items as $comboItem) {
+                    $items->push([
+                        'variante_id' => $comboItem->variante_id,
+                        'cantidad'    => $comboItem->cantidad * $cantidadCombo,
+                        'descuento'   => $comboItem->descuento,
+                    ]);
+                }
+            }
+        }
 
         $venta = Venta::registrar(
             $request->only('mesa', 'descuento', 'notas'),
-            $request->items,
-            $request->pagos,
+            $items->values()->all(),
+            $data['pagos'],
             Auth::id()
         );
 
@@ -66,7 +114,10 @@ class PosController extends Controller
             $venta->update(['estado' => 'pendiente']);
         }
 
-        return response()->json($venta->load('detalles', 'pagos'), 201);
+        return response()->json(
+            $venta->load('detalles', 'pagos'),
+            201
+        );
     }
 
     // GET /api/pos/pedidos-activos

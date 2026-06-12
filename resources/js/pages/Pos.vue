@@ -42,13 +42,16 @@ interface ComboItem {
 interface Combo {
     id: number;
     nombre: string;
+    descripcion?: string | null;
     precio_total: number;
     ahorro: number;
     items: ComboItem[];
 }
 
 interface LineaPedido {
-    variante_id: number;
+    tipo: 'variante' | 'combo';
+    variante_id?: number;
+    combo_id?: number;
     nombre: string;
     precio: number;
     descuento: number;
@@ -148,7 +151,7 @@ async function cargarMenu() {
     if (data) {
         categorias.value = data.categorias;
         combos.value = data.combos;
-        categoriaActiva.value = data.categorias[0]?.id ?? null;
+        categoriaActiva.value = data.categorias[0]?.id ?? (data.combos.length ? 'combos' : null);
     }
 }
 
@@ -161,36 +164,45 @@ onMounted(async () => {
     await cargarPedidosActivos();
 });
 
-function agregarVariante(variante: Variante, nombreProducto: string, descuento = 0) {
+function agregarVariante(variante: Variante, nombreProducto: string, descuento = 0, cantidad = 1) {
     const existente = pedido.value.find(l =>
-        l.variante_id === variante.id && l.descuento === descuento
+        l.tipo === 'variante' &&
+        l.variante_id === variante.id &&
+        l.descuento === descuento
+    );
+
+    if (existente) {
+        existente.cantidad += cantidad;
+    } else {
+        pedido.value.push({
+            tipo: 'variante',
+            variante_id: variante.id,
+            nombre: `${nombreProducto} ${variante.nombre}`,
+            precio: variante.precio_venta,
+            descuento,
+            cantidad,
+        });
+    }
+}
+
+function agregarCombo(combo: Combo) {
+    const existente = pedido.value.find(l =>
+        l.tipo === 'combo' &&
+        l.combo_id === combo.id
     );
 
     if (existente) {
         existente.cantidad++;
     } else {
         pedido.value.push({
-            variante_id: variante.id,
-            nombre: `${nombreProducto} ${variante.nombre}`,
-            precio: variante.precio_venta,
-            descuento,
+            tipo: 'combo',
+            combo_id: combo.id,
+            nombre: `Combo ${combo.nombre}`,
+            precio: combo.precio_total,
+            descuento: 0,
             cantidad: 1,
         });
     }
-}
-
-function agregarCombo(combo: Combo) {
-    combo.items.forEach(item => {
-        agregarVariante(
-            {
-                id: item.variante.id,
-                nombre: item.variante.nombre,
-                precio_venta: item.variante.precio_venta,
-            },
-            `[Combo ${combo.nombre}] ${item.variante.producto.nombre}`,
-            item.descuento
-        );
-    });
 }
 
 function cambiarCantidad(index: number, delta: number) {
@@ -215,8 +227,15 @@ function limpiarPedido() {
 function buildPagos() {
     if (pagoModo.value === 'mixto') {
         return [
-            { metodo: 'efectivo', monto: pagoEfectivo.value },
-            { metodo: 'transferencia', monto: pagoTransferencia.value },
+            { metodo: 'efectivo', monto: Number(pagoEfectivo.value) },
+            { metodo: 'transferencia', monto: Number(pagoTransferencia.value) },
+        ].filter(p => p.monto > 0);
+    }
+
+    return [
+        {
+            metodo: metodoPago.value,
+            monto: total(pagoTransferencia.value) },
         ].filter(p => p.monto > 0);
     }
 
@@ -235,17 +254,31 @@ async function cobrar() {
 
     if (!pagos.length) return;
 
-    const res = await post('/api/pos/venta', {
+    const items = pedido.value
+        .filter(l => l.tipo === 'variante')
+        .map(l => ({
+            variante_id: l.variante_id,
+            cantidad: l.cantidad,
+            descuento: l.descuento,
+        }));
+
+    const combosPayload = pedido.value
+        .filter(l => l.tipo === 'combo')
+        .map(l => ({
+            combo_id: l.combo_id,
+            cantidad: l.cantidad,
+        }));
+
+    const payload = {
         mesa: mesa.value || null,
         notas: notas.value || null,
         descuento: descuentoMonto.value,
         pagos,
-        items: pedido.value.map(l => ({
-            variante_id: l.variante_id,
-            cantidad: l.cantidad,
-            descuento: l.descuento,
-        })),
-    });
+        ...(items.length ? { items } : {}),
+        ...(combosPayload.length ? { combos: combosPayload } : {}),
+    };
+
+    const res = await post('/api/pos/venta', payload);
 
     if (res) {
         confirmado.value = true;
@@ -350,24 +383,38 @@ async function avanzarEstado(venta: Venta) {
                         >
                             <CardContent class="p-3">
                                 <div class="flex items-start justify-between gap-2">
-                                    <p class="font-semibold text-sm">
-                                        {{ combo.nombre }}
-                                    </p>
+                                    <div>
+                                        <p class="font-semibold text-sm">
+                                            {{ combo.nombre }}
+                                        </p>
+
+                                        <p
+                                            v-if="combo.descripcion"
+                                            class="text-xs text-muted-foreground mt-0.5"
+                                        >
+                                            {{ combo.descripcion }}
+                                        </p>
+                                    </div>
 
                                     <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full shrink-0">
                                         Ahorrás {{ fmt(combo.ahorro) }}
                                     </span>
                                 </div>
 
-                                <div class="mt-1 space-y-0.5">
+                                <div class="mt-2 space-y-0.5">
                                     <p
                                         v-for="item in combo.items"
                                         :key="item.variante_id"
                                         class="text-xs text-muted-foreground"
                                     >
+                                        {{ item.cantidad }}x
                                         {{ item.variante.producto.nombre }}
                                         {{ item.variante.nombre }}
-                                        <span class="text-primary">
+
+                                        <span
+                                            v-if="item.descuento > 0"
+                                            class="text-primary"
+                                        >
                                             -{{ fmt(item.descuento) }}
                                         </span>
                                     </p>
@@ -609,7 +656,7 @@ async function avanzarEstado(venta: Venta) {
 
                                     <input
                                         type="number"
-                                        v-model="pagoEfectivo"
+                                        v-model.number="pagoEfectivo"
                                         min="0"
                                         class="w-full text-xs rounded border border-input bg-background px-2 py-1"
                                     />
@@ -620,7 +667,7 @@ async function avanzarEstado(venta: Venta) {
 
                                     <input
                                         type="number"
-                                        v-model="pagoTransferencia"
+                                        v-model.number="pagoTransferencia"
                                         min="0"
                                         class="w-full text-xs rounded border border-input bg-background px-2 py-1"
                                     />
