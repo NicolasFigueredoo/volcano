@@ -235,13 +235,6 @@ function buildPagos() {
     return [
         {
             metodo: metodoPago.value,
-            monto: total(pagoTransferencia.value) },
-        ].filter(p => p.monto > 0);
-    }
-
-    return [
-        {
-            metodo: metodoPago.value,
             monto: total.value,
         },
     ];
