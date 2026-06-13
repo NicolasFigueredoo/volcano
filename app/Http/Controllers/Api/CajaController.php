@@ -319,4 +319,136 @@ class CajaController extends Controller
 
         return $stats;
     }
+
+     public function ventasHoy(): JsonResponse
+    {
+        $user = Auth::user();
+        $caja = Caja::abiertaActual();
+ 
+        // Si no hay caja abierta, buscar la del día operativo actual de todos modos
+        $cajaHoy = $caja ?? Caja::whereDate('fecha_operativa', Caja::fechaOperativaActual())->first();
+ 
+        $ventas = $cajaHoy
+            ? Venta::where('caja_id', $cajaHoy->id)
+                ->with(['detalles.variante', 'pagos', 'user:id,name'])
+                ->orderByDesc('created_at')
+                ->get()
+            : collect();
+ 
+        // Menú para el modal de edición (solo admin puede editar ítems)
+        $menu = $user->isAdmin()
+            ? \App\Models\Variante::with('producto:id,nombre,categoria_id')
+                ->where('activo', true)
+                ->get()
+                ->map(fn ($v) => [
+                    'id'     => $v->id,
+                    'nombre' => $v->producto->nombre . ($v->nombre ? ' — ' . $v->nombre : ''),
+                    'precio' => $v->precio,
+                    'costo'  => $v->costo,
+                ])
+            : [];
+ 
+        return response()->json([
+            'ventas' => $ventas,
+            'menu'   => $menu,
+        ]);
+    }
+ 
+    /**
+     * Cambiar solo el estado de una venta.
+     * Accesible por cajero y admin.
+     */
+    public function actualizarEstadoVenta(Request $request, Venta $venta): JsonResponse
+    {
+        $request->validate([
+            'estado' => 'required|in:pendiente,preparacion,pagado,entregado,anulado',
+        ]);
+ 
+        $venta->update(['estado' => $request->estado]);
+ 
+        return response()->json($venta->fresh(['detalles', 'pagos', 'user:id,name']));
+    }
+ 
+    /**
+     * Editar ítems, cantidades y nota de una venta.
+     * Solo admin.
+     *
+     * Body esperado:
+     * {
+     *   "notas": "sin cebolla",
+     *   "items": [
+     *     { "variante_id": 3, "cantidad": 2 },
+     *     { "variante_id": 7, "cantidad": 1 }
+     *   ]
+     * }
+     */
+    public function editarVenta(Request $request, Venta $venta): JsonResponse
+    {
+        $user = Auth::user();
+ 
+        if (!$user->isAdmin()) {
+            return response()->json(['message' => 'Solo el administrador puede editar ventas.'], 403);
+        }
+ 
+        if ($venta->estado === 'anulado') {
+            return response()->json(['message' => 'No se puede editar una venta anulada.'], 422);
+        }
+ 
+        $request->validate([
+            'notas'              => 'nullable|string|max:500',
+            'items'              => 'required|array|min:1',
+            'items.*.variante_id' => 'required|integer|exists:variantes,id',
+            'items.*.cantidad'   => 'required|integer|min:1',
+        ]);
+ 
+        // Reconstruir detalles
+        $venta->detalles()->delete();
+ 
+        $total = 0;
+ 
+        foreach ($request->items as $item) {
+            $variante = \App\Models\Variante::with('producto')->find($item['variante_id']);
+ 
+            $subtotal = $variante->precio * $item['cantidad'];
+            $total   += $subtotal;
+ 
+            DetalleVenta::create([
+                'venta_id'         => $venta->id,
+                'variante_id'      => $variante->id,
+                'nombre_snapshot'  => $variante->producto->nombre . ($variante->nombre ? ' — ' . $variante->nombre : ''),
+                'precio_snapshot'  => $variante->precio,
+                'costo_snapshot'   => $variante->costo,
+                'cantidad'         => $item['cantidad'],
+                'subtotal'         => $subtotal,
+            ]);
+        }
+ 
+        $venta->update([
+            'total' => $total,
+            'notas' => $request->notas,
+        ]);
+ 
+        return response()->json($venta->fresh(['detalles', 'pagos', 'user:id,name']));
+    }
+ 
+    /**
+     * Anular una venta (soft-delete lógico via estado).
+     * Solo admin.
+     */
+    public function anularVenta(Venta $venta): JsonResponse
+    {
+        $user = Auth::user();
+ 
+        if (!$user->isAdmin()) {
+            return response()->json(['message' => 'Solo el administrador puede anular ventas.'], 403);
+        }
+ 
+        if ($venta->estado === 'anulado') {
+            return response()->json(['message' => 'La venta ya está anulada.'], 422);
+        }
+ 
+        $venta->update(['estado' => 'anulado']);
+ 
+        return response()->json(['message' => 'Venta anulada correctamente.']);
+    }
 }

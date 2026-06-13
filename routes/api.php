@@ -19,6 +19,8 @@ Route::middleware(['web', 'auth'])->group(function () {
     });
 
 
+    
+
 
 
 
@@ -33,6 +35,10 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::get('pedidos-activos', [CajaController::class, 'pedidosActivos']);
         Route::get('alertas-compra', [CajaController::class, 'alertasCompra']);
         Route::get('historial/{caja}', [CajaController::class, 'show']);
+        Route::get('ventas-hoy',              [CajaController::class, 'ventasHoy']);
+Route::patch('ventas/{venta}/estado', [CajaController::class, 'actualizarEstadoVenta']);
+Route::put('ventas/{venta}',          [CajaController::class, 'editarVenta']);
+Route::delete('ventas/{venta}',       [CajaController::class, 'anularVenta']);
     });
 
     // ── Inventario ───────────────────────────────────────────────────────────
