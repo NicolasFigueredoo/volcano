@@ -89,59 +89,60 @@ class CajaController extends Controller
         );
     }
 
-    public function cerrar(): JsonResponse
+      public function cerrar(): JsonResponse
     {
         $user = Auth::user();
-
+ 
         if ($user->isAdmin()) {
             return response()->json([
                 'message' => 'El administrador solo puede visualizar caja.',
             ], 403);
         }
-
+ 
         $caja = Caja::abiertaActual();
-
+ 
         if (!$caja) {
             return response()->json([
                 'message' => 'No hay una caja abierta.',
             ], 422);
         }
-
+ 
         $ventas = Venta::where('caja_id', $caja->id)
+            ->where('estado', '!=', 'anulado')   // ← filtro agregado
             ->with(['detalles', 'pagos'])
             ->get();
-
+ 
         $stats = $this->calcularStats($ventas, true);
-
+ 
         $productosTop = $ventas->flatMap->detalles
             ->groupBy('nombre_snapshot')
             ->map(fn ($g) => [
-                'nombre' => $g->first()->nombre_snapshot,
+                'nombre'   => $g->first()->nombre_snapshot,
                 'cantidad' => $g->sum('cantidad'),
-                'monto' => $g->sum('subtotal'),
+                'monto'    => $g->sum('subtotal'),
             ])
             ->sortByDesc('cantidad')
             ->values()
             ->take(5)
             ->toArray();
-
+ 
         $caja->update([
-            'estado' => 'cerrada',
-            'cerrada_por' => $user->id,
-            'cerrada_at' => now(),
-            'total_ventas' => $stats['total_monto'],
-            'total_efectivo' => $stats['total_efectivo'],
+            'estado'              => 'cerrada',
+            'cerrada_por'         => $user->id,
+            'cerrada_at'          => now(),
+            'total_ventas'        => $stats['total_monto'],
+            'total_efectivo'      => $stats['total_efectivo'],
             'total_transferencia' => $stats['total_transferencia'],
-            'costo_insumos' => $stats['costo_insumos'] ?? 0,
-            'ganancia_bruta' => $stats['ganancia_bruta'] ?? 0,
-            'gastos_fijos' => $stats['gastos_fijos'] ?? 0,
-            'ganancia_neta' => $stats['ganancia_neta'] ?? 0,
-            'cantidad_ventas' => $stats['cantidad_ventas'],
-            'resumen_json' => [
+            'costo_insumos'       => $stats['costo_insumos'] ?? 0,
+            'ganancia_bruta'      => $stats['ganancia_bruta'] ?? 0,
+            'gastos_fijos'        => $stats['gastos_fijos'] ?? 0,
+            'ganancia_neta'       => $stats['ganancia_neta'] ?? 0,
+            'cantidad_ventas'     => $stats['cantidad_ventas'],
+            'resumen_json'        => [
                 'productos_top' => $productosTop,
             ],
         ]);
-
+ 
         return response()->json(
             $caja->fresh(['abiertaPor:id,name', 'cerradaPor:id,name'])
         );
@@ -280,45 +281,48 @@ class CajaController extends Controller
 
     private function calcularStats($ventas, bool $conAdmin = false): array
     {
+        $ventas = $ventas->where('estado', '!=', 'anulado');   // ← filtro agregado
+ 
         $efectivo = $ventas->flatMap->pagos
             ->where('metodo', 'efectivo')
             ->sum('monto');
-
+ 
         $transferencia = $ventas->flatMap->pagos
             ->where('metodo', 'transferencia')
             ->sum('monto');
-
+ 
         $total = $ventas->sum('total');
-
+ 
         $stats = [
-            'cantidad_ventas' => $ventas->count(),
-            'total_monto' => $total,
-            'total_efectivo' => $efectivo,
+            'cantidad_ventas'     => $ventas->count(),
+            'total_monto'         => $total,
+            'total_efectivo'      => $efectivo,
             'total_transferencia' => $transferencia,
         ];
-
+ 
         if ($conAdmin) {
             $costoInsumos = $ventas->flatMap->detalles
                 ->sum(fn ($d) => $d->costo_snapshot * $d->cantidad);
-
+ 
             $gananciaBruta = $total - $costoInsumos;
-            $gastosDia = GastoFijo::totalDiario();
-            $gananciaNeta = $gananciaBruta - $gastosDia;
-
-            $stats['costo_insumos'] = $costoInsumos;
+            $gastosDia     = GastoFijo::totalDiario();
+            $gananciaNeta  = $gananciaBruta - $gastosDia;
+ 
+            $stats['costo_insumos']  = $costoInsumos;
             $stats['ganancia_bruta'] = $gananciaBruta;
-            $stats['gastos_fijos'] = $gastosDia;
-            $stats['ganancia_neta'] = $gananciaNeta;
-            $stats['separacion'] = [
+            $stats['gastos_fijos']   = $gastosDia;
+            $stats['ganancia_neta']  = $gananciaNeta;
+            $stats['separacion']     = [
                 'reponer_insumos' => $costoInsumos,
-                'ahorro' => max(0, round($gananciaNeta * 0.10)),
-                'retiro' => max(0, round($gananciaNeta * 0.40)),
-                'negocio' => max(0, round($gananciaNeta * 0.50)),
+                'ahorro'          => max(0, round($gananciaNeta * 0.10)),
+                'retiro'          => max(0, round($gananciaNeta * 0.40)),
+                'negocio'         => max(0, round($gananciaNeta * 0.50)),
             ];
         }
-
+ 
         return $stats;
     }
+ 
 
      public function ventasHoy(): JsonResponse
     {
