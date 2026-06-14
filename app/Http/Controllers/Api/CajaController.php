@@ -147,6 +147,71 @@ class CajaController extends Controller
         );
     }
 
+    public function cerrarManual(Caja $caja): JsonResponse
+    {
+        $user = Auth::user();
+
+        if (!$user->isAdmin()) {
+            return response()->json([
+                'message' => 'Solo el administrador puede cerrar cajas manualmente.',
+            ], 403);
+        }
+
+        if ($caja->estado !== 'abierta') {
+            return response()->json([
+                'message' => 'La caja ya está cerrada.',
+            ], 422);
+        }
+
+        $ventas = Venta::where('caja_id', $caja->id)
+            ->with(['detalles', 'pagos'])
+            ->get();
+
+        // Fallback: si las ventas no tienen caja_id, buscar por fecha operativa
+        if ($ventas->isEmpty()) {
+            $fechaOperativa = Carbon::parse($caja->fecha_operativa)->toDateString();
+
+            $ventas = Venta::whereDate('created_at', $fechaOperativa)
+                ->with(['detalles', 'pagos'])
+                ->get();
+        }
+
+        $stats = $this->calcularStats($ventas, true);
+
+        $productosTop = $ventas->flatMap->detalles
+            ->groupBy('nombre_snapshot')
+            ->map(fn ($g) => [
+                'nombre' => $g->first()->nombre_snapshot,
+                'cantidad' => $g->sum('cantidad'),
+                'monto' => $g->sum('subtotal'),
+            ])
+            ->sortByDesc('cantidad')
+            ->values()
+            ->take(5)
+            ->toArray();
+
+        $caja->update([
+            'estado' => 'cerrada',
+            'cerrada_por' => $user->id,
+            'cerrada_at' => now(),
+            'total_ventas' => $stats['total_monto'],
+            'total_efectivo' => $stats['total_efectivo'],
+            'total_transferencia' => $stats['total_transferencia'],
+            'costo_insumos' => $stats['costo_insumos'] ?? 0,
+            'ganancia_bruta' => $stats['ganancia_bruta'] ?? 0,
+            'gastos_fijos' => $stats['gastos_fijos'] ?? 0,
+            'ganancia_neta' => $stats['ganancia_neta'] ?? 0,
+            'cantidad_ventas' => $stats['cantidad_ventas'],
+            'resumen_json' => [
+                'productos_top' => $productosTop,
+            ],
+        ]);
+
+        return response()->json(
+            $caja->fresh(['abiertaPor:id,name', 'cerradaPor:id,name'])
+        );
+    }
+
     public function historial(Request $request): JsonResponse
     {
         $desde = $request->get('desde');
@@ -190,6 +255,30 @@ class CajaController extends Controller
                 ->with(['detalles', 'pagos', 'user:id,name'])
                 ->orderByDesc('created_at')
                 ->get();
+        }
+
+        /*
+         * Fallback para cajas aún abiertas (no cerradas a tiempo):
+         * recalcular stats desde las ventas en lugar de usar los valores guardados (en 0).
+         */
+        if ($caja->estado === 'abierta' || (int) $caja->total_ventas === 0 && $ventas->isNotEmpty()) {
+            $statsCalculadas = $this->calcularStats($ventas, true);
+
+            return response()->json([
+                'caja' => $caja,
+                'ventas' => $ventas,
+                'stats_guardadas' => [
+                    'cantidad_ventas' => $statsCalculadas['cantidad_ventas'],
+                    'total_monto' => $statsCalculadas['total_monto'],
+                    'total_efectivo' => $statsCalculadas['total_efectivo'],
+                    'total_transferencia' => $statsCalculadas['total_transferencia'],
+                    'costo_insumos' => $statsCalculadas['costo_insumos'] ?? 0,
+                    'ganancia_bruta' => $statsCalculadas['ganancia_bruta'] ?? 0,
+                    'gastos_fijos' => $statsCalculadas['gastos_fijos'] ?? 0,
+                    'ganancia_neta' => $statsCalculadas['ganancia_neta'] ?? 0,
+                ],
+                'resumen' => $caja->resumen_json ?? [],
+            ]);
         }
 
         return response()->json([

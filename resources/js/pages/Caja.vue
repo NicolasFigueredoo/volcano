@@ -200,6 +200,14 @@ function cerrarDetalleCaja() {
     cajaDetalle.value = null;
 }
 
+async function cerrarManual(caja: Caja) {
+    if (!confirm(`¿Cerrar manualmente la caja del ${fecha(caja.fecha_operativa)}?\nSe calcularán los totales desde las ventas registradas.`)) return;
+
+    await post(`/api/caja/${caja.id}/cerrar-manual`, {});
+    cajaDetalle.value = null;
+    await cargar();
+}
+
 function exportar() {
     if (!data.value || !esAdmin.value) return;
 
@@ -651,12 +659,26 @@ onMounted(cargar);
                             </p>
                         </div>
 
-                        <button
-                            class="w-8 h-8 rounded-full border flex items-center justify-center hover:bg-muted"
-                            @click="cerrarDetalleCaja"
-                        >
-                            <X class="w-4 h-4" />
-                        </button>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <!-- Botón cerrar manualmente: solo si la caja está abierta y es admin -->
+                            <Button
+                                v-if="cajaDetalle.caja.estado === 'abierta'"
+                                variant="destructive"
+                                size="sm"
+                                @click="cerrarManual(cajaDetalle.caja)"
+                                :disabled="loading"
+                            >
+                                <Lock class="w-4 h-4 mr-1" />
+                                Cerrar manualmente
+                            </Button>
+
+                            <button
+                                class="w-8 h-8 rounded-full border flex items-center justify-center hover:bg-muted"
+                                @click="cerrarDetalleCaja"
+                            >
+                                <X class="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
 
                     <div class="p-4 overflow-y-auto flex flex-col gap-4">
