@@ -123,6 +123,12 @@ const resumenSemanal = ref<ResumenSemanal | null>(null);
 const cajaDetalle = ref<CajaDetalle | null>(null);
 const cargandoCajaDetalle = ref(false);
 
+// Filtro por rango
+const filtroDesde = ref('');
+const filtroHasta = ref('');
+const resumenRango = ref<ResumenSemanal | null>(null);
+const cargandoRango = ref(false);
+
 const esAdmin = computed(() => data.value?.es_admin === true);
 const puedeOperarCaja = computed(() => data.value?.puede_operar_caja === true);
 
@@ -144,7 +150,6 @@ const estadoColor: Record<string, string> = {
 
 function horaVenta(d: string | null) {
     if (!d) return '—';
-
     return new Date(d).toLocaleTimeString('es-AR', {
         hour: '2-digit',
         minute: '2-digit',
@@ -153,7 +158,6 @@ function horaVenta(d: string | null) {
 
 function fecha(d: string | null) {
     if (!d) return '—';
-
     return new Date(d).toLocaleDateString('es-AR');
 }
 
@@ -179,20 +183,16 @@ async function abrirCaja() {
 
 async function cerrarCaja() {
     if (!confirm('¿Confirmar cierre de caja?')) return;
-
     await post('/api/caja/cerrar', {});
     await cargar();
 }
 
 async function verCajaGuardada(caja: Caja) {
     cargandoCajaDetalle.value = true;
-
     const res = await get<CajaDetalle>(`/api/caja/historial/${caja.id}`);
-
     if (res) {
         cajaDetalle.value = res;
     }
-
     cargandoCajaDetalle.value = false;
 }
 
@@ -202,10 +202,18 @@ function cerrarDetalleCaja() {
 
 async function cerrarManual(caja: Caja) {
     if (!confirm(`¿Cerrar manualmente la caja del ${fecha(caja.fecha_operativa)}?\nSe calcularán los totales desde las ventas registradas.`)) return;
-
     await post(`/api/caja/${caja.id}/cerrar-manual`, {});
     cajaDetalle.value = null;
     await cargar();
+}
+
+async function buscarRango() {
+    if (!filtroDesde.value || !filtroHasta.value) return;
+    cargandoRango.value = true;
+    resumenRango.value = await get<ResumenSemanal>(
+        `/api/caja/resumen-rango?desde=${filtroDesde.value}&hasta=${filtroHasta.value}`
+    );
+    cargandoRango.value = false;
 }
 
 function exportar() {
@@ -227,9 +235,7 @@ function exportar() {
 
     const a = document.createElement('a');
     a.href = URL.createObjectURL(
-        new Blob([rows.map(r => r.join(',')).join('\n')], {
-            type: 'text/csv',
-        })
+        new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' })
     );
     a.download = `caja_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
@@ -241,6 +247,8 @@ onMounted(cargar);
 <template>
     <AppLayout :breadcrumbs="[{ title: 'Caja', href: '/caja' }]">
         <div class="p-4 flex flex-col gap-4">
+
+            <!-- Estado de caja -->
             <Card>
                 <CardContent class="p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
                     <div>
@@ -302,6 +310,7 @@ onMounted(cargar);
                 </CardContent>
             </Card>
 
+            <!-- Stats del día -->
             <div v-if="data" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <Card>
                     <CardContent class="p-4">
@@ -332,6 +341,7 @@ onMounted(cargar);
                 </Card>
             </div>
 
+            <!-- Stats admin del día -->
             <div
                 v-if="esAdmin && data?.stats.ganancia_neta !== undefined"
                 class="grid grid-cols-2 sm:grid-cols-4 gap-3"
@@ -370,6 +380,7 @@ onMounted(cargar);
                 </Card>
             </div>
 
+            <!-- Separación sugerida -->
             <Card v-if="esAdmin && data?.stats.separacion">
                 <CardHeader class="pb-2">
                     <CardTitle class="text-sm">Separación sugerida</CardTitle>
@@ -380,17 +391,14 @@ onMounted(cargar);
                         <p class="text-xs text-muted-foreground">Reponer insumos</p>
                         <p class="font-semibold">{{ fmt(data.stats.separacion.reponer_insumos) }}</p>
                     </div>
-
                     <div>
                         <p class="text-xs text-muted-foreground">Ahorro 10%</p>
                         <p class="font-semibold">{{ fmt(data.stats.separacion.ahorro) }}</p>
                     </div>
-
                     <div>
                         <p class="text-xs text-muted-foreground">Retiro 40%</p>
                         <p class="font-semibold">{{ fmt(data.stats.separacion.retiro) }}</p>
                     </div>
-
                     <div>
                         <p class="text-xs text-muted-foreground">Negocio</p>
                         <p class="font-semibold">{{ fmt(data.stats.separacion.negocio) }}</p>
@@ -398,6 +406,7 @@ onMounted(cargar);
                 </CardContent>
             </Card>
 
+            <!-- Resumen semanal -->
             <Card v-if="esAdmin && resumenSemanal">
                 <CardHeader class="pb-2">
                     <CardTitle class="text-sm">
@@ -410,17 +419,14 @@ onMounted(cargar);
                         <p class="text-xs text-muted-foreground">Total vendido</p>
                         <p class="font-semibold">{{ fmt(resumenSemanal.total_ventas) }}</p>
                     </div>
-
                     <div>
                         <p class="text-xs text-muted-foreground">Ventas</p>
                         <p class="font-semibold">{{ resumenSemanal.cantidad_ventas }}</p>
                     </div>
-
                     <div>
                         <p class="text-xs text-muted-foreground">Ganancia bruta</p>
                         <p class="font-semibold">{{ fmt(resumenSemanal.ganancia_bruta) }}</p>
                     </div>
-
                     <div>
                         <p class="text-xs text-muted-foreground">Ganancia neta</p>
                         <p class="font-semibold text-green-600">{{ fmt(resumenSemanal.ganancia_neta) }}</p>
@@ -428,6 +434,92 @@ onMounted(cargar);
                 </CardContent>
             </Card>
 
+            <!-- Consulta por rango de fechas -->
+            <Card v-if="esAdmin">
+                <CardHeader class="pb-2">
+                    <CardTitle class="text-sm">Consulta por rango de fechas</CardTitle>
+                </CardHeader>
+
+                <CardContent class="flex flex-col gap-4">
+                    <div class="flex flex-col sm:flex-row gap-3 items-end">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-muted-foreground">Desde</label>
+                            <input
+                                type="date"
+                                v-model="filtroDesde"
+                                class="border rounded px-3 py-1.5 text-sm bg-background"
+                            />
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-muted-foreground">Hasta</label>
+                            <input
+                                type="date"
+                                v-model="filtroHasta"
+                                class="border rounded px-3 py-1.5 text-sm bg-background"
+                            />
+                        </div>
+
+                        <Button
+                            size="sm"
+                            @click="buscarRango"
+                            :disabled="cargandoRango || !filtroDesde || !filtroHasta"
+                        >
+                            <RefreshCw class="w-4 h-4 mr-1" :class="cargandoRango ? 'animate-spin' : ''" />
+                            Consultar
+                        </Button>
+                    </div>
+
+                    <div v-if="resumenRango" class="flex flex-col gap-3">
+                        <p class="text-xs text-muted-foreground">
+                            {{ fecha(resumenRango.desde) }} → {{ fecha(resumenRango.hasta) }}
+                            · {{ resumenRango.cantidad_ventas }} ventas
+                        </p>
+
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                                <p class="text-xs text-muted-foreground">Total vendido</p>
+                                <p class="font-semibold text-lg">{{ fmt(resumenRango.total_ventas) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-muted-foreground">Efectivo</p>
+                                <p class="font-semibold text-lg">{{ fmt(resumenRango.total_efectivo) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-muted-foreground">Transferencia</p>
+                                <p class="font-semibold text-lg">{{ fmt(resumenRango.total_transferencia) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-muted-foreground">Costo insumos</p>
+                                <p class="font-semibold text-lg text-destructive">{{ fmt(resumenRango.costo_insumos) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-muted-foreground">Ganancia bruta</p>
+                                <p class="font-semibold text-lg">{{ fmt(resumenRango.ganancia_bruta) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-muted-foreground">Gastos fijos</p>
+                                <p class="font-semibold text-lg text-destructive">{{ fmt(resumenRango.gastos_fijos) }}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-muted-foreground">Ganancia neta</p>
+                                <p
+                                    class="font-semibold text-lg"
+                                    :class="Number(resumenRango.ganancia_neta) >= 0 ? 'text-green-600' : 'text-destructive'"
+                                >
+                                    {{ fmt(resumenRango.ganancia_neta) }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p v-else-if="!cargandoRango" class="text-xs text-muted-foreground">
+                        Seleccioná un rango y hacé clic en Consultar.
+                    </p>
+                </CardContent>
+            </Card>
+
+            <!-- Pedidos activos -->
             <div>
                 <div class="flex items-center justify-between mb-2">
                     <h3 class="font-semibold text-sm">Pedidos activos</h3>
@@ -455,7 +547,6 @@ onMounted(cargar);
                         <CardContent class="p-3">
                             <div class="flex items-center justify-between mb-2">
                                 <span class="font-black text-lg">#{{ pedido.numero_orden }}</span>
-
                                 <span
                                     class="text-xs font-medium px-2 py-0.5 rounded-full border"
                                     :class="estadoColor[pedido.estado]"
@@ -487,6 +578,7 @@ onMounted(cargar);
                 </div>
             </div>
 
+            <!-- Alertas de compra -->
             <Card v-if="esAdmin && alertasCompra.length">
                 <CardHeader class="pb-2">
                     <CardTitle class="text-sm text-destructive">⚠ Insumos a comprar</CardTitle>
@@ -499,7 +591,6 @@ onMounted(cargar);
                         class="text-xs flex justify-between border rounded px-2 py-1"
                     >
                         <span>{{ a.nombre }}</span>
-
                         <span
                             class="font-medium"
                             :class="a.estado === 'falta' ? 'text-destructive' : 'text-yellow-600'"
@@ -510,6 +601,7 @@ onMounted(cargar);
                 </CardContent>
             </Card>
 
+            <!-- Exportar CSV -->
             <div v-if="esAdmin" class="flex gap-2">
                 <Button variant="outline" size="sm" @click="exportar" :disabled="!data?.ventas.length">
                     <Download class="w-4 h-4 mr-1" />
@@ -517,6 +609,7 @@ onMounted(cargar);
                 </Button>
             </div>
 
+            <!-- Ventas de la caja actual -->
             <Card v-if="esAdmin">
                 <CardHeader class="pb-2">
                     <CardTitle class="text-base">Ventas de la caja actual</CardTitle>
@@ -578,6 +671,7 @@ onMounted(cargar);
                 </CardContent>
             </Card>
 
+            <!-- Historial de cajas -->
             <Card v-if="esAdmin">
                 <CardHeader class="pb-2">
                     <CardTitle class="text-base">Historial de cajas</CardTitle>
@@ -634,6 +728,7 @@ onMounted(cargar);
                 </CardContent>
             </Card>
 
+            <!-- Modal detalle de caja -->
             <div
                 v-if="cajaDetalle"
                 class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
@@ -652,15 +747,12 @@ onMounted(cargar);
                             </p>
 
                             <p class="text-xs text-muted-foreground mt-1">
-                                Abierta por:
-                                {{ cajaDetalle.caja.abierta_por?.name ?? '—' }}
-                                · Cerrada por:
-                                {{ cajaDetalle.caja.cerrada_por?.name ?? '—' }}
+                                Abierta por: {{ cajaDetalle.caja.abierta_por?.name ?? '—' }}
+                                · Cerrada por: {{ cajaDetalle.caja.cerrada_por?.name ?? '—' }}
                             </p>
                         </div>
 
                         <div class="flex items-center gap-2 shrink-0">
-                            <!-- Botón cerrar manualmente: solo si la caja está abierta y es admin -->
                             <Button
                                 v-if="cajaDetalle.caja.estado === 'abierta'"
                                 variant="destructive"
@@ -686,36 +778,28 @@ onMounted(cargar);
                             <Card>
                                 <CardContent class="p-4">
                                     <p class="text-xs text-muted-foreground mb-1">Ventas</p>
-                                    <p class="text-xl font-semibold">
-                                        {{ cajaDetalle.stats_guardadas.cantidad_ventas }}
-                                    </p>
+                                    <p class="text-xl font-semibold">{{ cajaDetalle.stats_guardadas.cantidad_ventas }}</p>
                                 </CardContent>
                             </Card>
 
                             <Card>
                                 <CardContent class="p-4">
                                     <p class="text-xs text-muted-foreground mb-1">Total vendido</p>
-                                    <p class="text-xl font-semibold">
-                                        {{ fmt(cajaDetalle.stats_guardadas.total_monto) }}
-                                    </p>
+                                    <p class="text-xl font-semibold">{{ fmt(cajaDetalle.stats_guardadas.total_monto) }}</p>
                                 </CardContent>
                             </Card>
 
                             <Card>
                                 <CardContent class="p-4">
                                     <p class="text-xs text-muted-foreground mb-1">Efectivo</p>
-                                    <p class="text-xl font-semibold">
-                                        {{ fmt(cajaDetalle.stats_guardadas.total_efectivo) }}
-                                    </p>
+                                    <p class="text-xl font-semibold">{{ fmt(cajaDetalle.stats_guardadas.total_efectivo) }}</p>
                                 </CardContent>
                             </Card>
 
                             <Card>
                                 <CardContent class="p-4">
                                     <p class="text-xs text-muted-foreground mb-1">Transferencia</p>
-                                    <p class="text-xl font-semibold">
-                                        {{ fmt(cajaDetalle.stats_guardadas.total_transferencia) }}
-                                    </p>
+                                    <p class="text-xl font-semibold">{{ fmt(cajaDetalle.stats_guardadas.total_transferencia) }}</p>
                                 </CardContent>
                             </Card>
                         </div>
@@ -724,27 +808,21 @@ onMounted(cargar);
                             <Card>
                                 <CardContent class="p-4">
                                     <p class="text-xs text-muted-foreground mb-1">Costo insumos</p>
-                                    <p class="text-xl font-semibold text-destructive">
-                                        {{ fmt(cajaDetalle.stats_guardadas.costo_insumos) }}
-                                    </p>
+                                    <p class="text-xl font-semibold text-destructive">{{ fmt(cajaDetalle.stats_guardadas.costo_insumos) }}</p>
                                 </CardContent>
                             </Card>
 
                             <Card>
                                 <CardContent class="p-4">
                                     <p class="text-xs text-muted-foreground mb-1">Ganancia bruta</p>
-                                    <p class="text-xl font-semibold">
-                                        {{ fmt(cajaDetalle.stats_guardadas.ganancia_bruta) }}
-                                    </p>
+                                    <p class="text-xl font-semibold">{{ fmt(cajaDetalle.stats_guardadas.ganancia_bruta) }}</p>
                                 </CardContent>
                             </Card>
 
                             <Card>
                                 <CardContent class="p-4">
                                     <p class="text-xs text-muted-foreground mb-1">Gastos fijos</p>
-                                    <p class="text-xl font-semibold text-destructive">
-                                        {{ fmt(cajaDetalle.stats_guardadas.gastos_fijos) }}
-                                    </p>
+                                    <p class="text-xl font-semibold text-destructive">{{ fmt(cajaDetalle.stats_guardadas.gastos_fijos) }}</p>
                                 </CardContent>
                             </Card>
 
@@ -830,9 +908,7 @@ onMounted(cargar);
                                                 {{ horaVenta(venta.created_at) }}
                                             </td>
 
-                                            <td class="p-3">
-                                                {{ venta.mesa ?? '—' }}
-                                            </td>
+                                            <td class="p-3">{{ venta.mesa ?? '—' }}</td>
 
                                             <td class="p-3">
                                                 <div class="flex flex-col gap-0.5">
@@ -869,6 +945,7 @@ onMounted(cargar);
                     </div>
                 </div>
             </div>
+
         </div>
     </AppLayout>
 </template>

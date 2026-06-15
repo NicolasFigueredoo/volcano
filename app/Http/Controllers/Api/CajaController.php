@@ -261,21 +261,21 @@ class CajaController extends Controller
          * Fallback para cajas aún abiertas (no cerradas a tiempo):
          * recalcular stats desde las ventas en lugar de usar los valores guardados (en 0).
          */
-        if ($caja->estado === 'abierta' || (int) $caja->total_ventas === 0 && $ventas->isNotEmpty()) {
+        if ($caja->estado === 'abierta' || ((int) $caja->total_ventas === 0 && $ventas->isNotEmpty())) {
             $statsCalculadas = $this->calcularStats($ventas, true);
 
             return response()->json([
                 'caja' => $caja,
                 'ventas' => $ventas,
                 'stats_guardadas' => [
-                    'cantidad_ventas' => $statsCalculadas['cantidad_ventas'],
-                    'total_monto' => $statsCalculadas['total_monto'],
-                    'total_efectivo' => $statsCalculadas['total_efectivo'],
+                    'cantidad_ventas'     => $statsCalculadas['cantidad_ventas'],
+                    'total_monto'         => $statsCalculadas['total_monto'],
+                    'total_efectivo'      => $statsCalculadas['total_efectivo'],
                     'total_transferencia' => $statsCalculadas['total_transferencia'],
-                    'costo_insumos' => $statsCalculadas['costo_insumos'] ?? 0,
-                    'ganancia_bruta' => $statsCalculadas['ganancia_bruta'] ?? 0,
-                    'gastos_fijos' => $statsCalculadas['gastos_fijos'] ?? 0,
-                    'ganancia_neta' => $statsCalculadas['ganancia_neta'] ?? 0,
+                    'costo_insumos'       => $statsCalculadas['costo_insumos'] ?? 0,
+                    'ganancia_bruta'      => $statsCalculadas['ganancia_bruta'] ?? 0,
+                    'gastos_fijos'        => $statsCalculadas['gastos_fijos'] ?? 0,
+                    'ganancia_neta'       => $statsCalculadas['ganancia_neta'] ?? 0,
                 ],
                 'resumen' => $caja->resumen_json ?? [],
             ]);
@@ -285,14 +285,14 @@ class CajaController extends Controller
             'caja' => $caja,
             'ventas' => $ventas,
             'stats_guardadas' => [
-                'cantidad_ventas' => $caja->cantidad_ventas,
-                'total_monto' => $caja->total_ventas,
-                'total_efectivo' => $caja->total_efectivo,
+                'cantidad_ventas'     => $caja->cantidad_ventas,
+                'total_monto'         => $caja->total_ventas,
+                'total_efectivo'      => $caja->total_efectivo,
                 'total_transferencia' => $caja->total_transferencia,
-                'costo_insumos' => $caja->costo_insumos,
-                'ganancia_bruta' => $caja->ganancia_bruta,
-                'gastos_fijos' => $caja->gastos_fijos,
-                'ganancia_neta' => $caja->ganancia_neta,
+                'costo_insumos'       => $caja->costo_insumos,
+                'ganancia_bruta'      => $caja->ganancia_bruta,
+                'gastos_fijos'        => $caja->gastos_fijos,
+                'ganancia_neta'       => $caja->ganancia_neta,
             ],
             'resumen' => $caja->resumen_json ?? [],
         ]);
@@ -319,18 +319,101 @@ class CajaController extends Controller
             ->orderBy('fecha_operativa')
             ->get();
 
+        $totales = $cajas->map(function ($caja) {
+            if ($caja->estado === 'abierta' || (int) $caja->total_ventas === 0) {
+                $ventas = Venta::where('caja_id', $caja->id)->with(['detalles', 'pagos'])->get();
+                $stats = $this->calcularStats($ventas, true);
+                return [
+                    'total_ventas'        => $stats['total_monto'],
+                    'total_efectivo'      => $stats['total_efectivo'],
+                    'total_transferencia' => $stats['total_transferencia'],
+                    'costo_insumos'       => $stats['costo_insumos'] ?? 0,
+                    'ganancia_bruta'      => $stats['ganancia_bruta'] ?? 0,
+                    'gastos_fijos'        => $stats['gastos_fijos'] ?? 0,
+                    'ganancia_neta'       => $stats['ganancia_neta'] ?? 0,
+                    'cantidad_ventas'     => $stats['cantidad_ventas'],
+                ];
+            }
+            return [
+                'total_ventas'        => $caja->total_ventas,
+                'total_efectivo'      => $caja->total_efectivo,
+                'total_transferencia' => $caja->total_transferencia,
+                'costo_insumos'       => $caja->costo_insumos,
+                'ganancia_bruta'      => $caja->ganancia_bruta,
+                'gastos_fijos'        => $caja->gastos_fijos,
+                'ganancia_neta'       => $caja->ganancia_neta,
+                'cantidad_ventas'     => $caja->cantidad_ventas,
+            ];
+        });
+
         return response()->json([
-            'desde' => $jueves->toDateString(),
-            'hasta' => $domingo->toDateString(),
-            'total_ventas' => $cajas->sum('total_ventas'),
-            'total_efectivo' => $cajas->sum('total_efectivo'),
-            'total_transferencia' => $cajas->sum('total_transferencia'),
-            'costo_insumos' => $cajas->sum('costo_insumos'),
-            'ganancia_bruta' => $cajas->sum('ganancia_bruta'),
-            'gastos_fijos' => $cajas->sum('gastos_fijos'),
-            'ganancia_neta' => $cajas->sum('ganancia_neta'),
-            'cantidad_ventas' => $cajas->sum('cantidad_ventas'),
-            'cajas' => $cajas,
+            'desde'               => $jueves->toDateString(),
+            'hasta'               => $domingo->toDateString(),
+            'total_ventas'        => $totales->sum('total_ventas'),
+            'total_efectivo'      => $totales->sum('total_efectivo'),
+            'total_transferencia' => $totales->sum('total_transferencia'),
+            'costo_insumos'       => $totales->sum('costo_insumos'),
+            'ganancia_bruta'      => $totales->sum('ganancia_bruta'),
+            'gastos_fijos'        => $totales->sum('gastos_fijos'),
+            'ganancia_neta'       => $totales->sum('ganancia_neta'),
+            'cantidad_ventas'     => $totales->sum('cantidad_ventas'),
+            'cajas'               => $cajas,
+        ]);
+    }
+
+    public function resumenPorRango(Request $request): JsonResponse
+    {
+        $desde = $request->get('desde')
+            ? Carbon::parse($request->get('desde'))->toDateString()
+            : now()->subDays(7)->toDateString();
+
+        $hasta = $request->get('hasta')
+            ? Carbon::parse($request->get('hasta'))->toDateString()
+            : now()->toDateString();
+
+        $cajas = Caja::whereBetween('fecha_operativa', [$desde, $hasta])
+            ->orderBy('fecha_operativa')
+            ->get();
+
+        $totales = $cajas->map(function ($caja) {
+            if ($caja->estado === 'abierta' || (int) $caja->total_ventas === 0) {
+                $ventas = Venta::where('caja_id', $caja->id)->with(['detalles', 'pagos'])->get();
+                $stats = $this->calcularStats($ventas, true);
+                return [
+                    'total_ventas'        => $stats['total_monto'],
+                    'total_efectivo'      => $stats['total_efectivo'],
+                    'total_transferencia' => $stats['total_transferencia'],
+                    'costo_insumos'       => $stats['costo_insumos'] ?? 0,
+                    'ganancia_bruta'      => $stats['ganancia_bruta'] ?? 0,
+                    'gastos_fijos'        => $stats['gastos_fijos'] ?? 0,
+                    'ganancia_neta'       => $stats['ganancia_neta'] ?? 0,
+                    'cantidad_ventas'     => $stats['cantidad_ventas'],
+                ];
+            }
+            return [
+                'total_ventas'        => $caja->total_ventas,
+                'total_efectivo'      => $caja->total_efectivo,
+                'total_transferencia' => $caja->total_transferencia,
+                'costo_insumos'       => $caja->costo_insumos,
+                'ganancia_bruta'      => $caja->ganancia_bruta,
+                'gastos_fijos'        => $caja->gastos_fijos,
+                'ganancia_neta'       => $caja->ganancia_neta,
+                'cantidad_ventas'     => $caja->cantidad_ventas,
+            ];
+        });
+
+        return response()->json([
+            'desde'               => $desde,
+            'hasta'               => $hasta,
+            'total_ventas'        => $totales->sum('total_ventas'),
+            'total_efectivo'      => $totales->sum('total_efectivo'),
+            'total_transferencia' => $totales->sum('total_transferencia'),
+            'costo_insumos'       => $totales->sum('costo_insumos'),
+            'ganancia_bruta'      => $totales->sum('ganancia_bruta'),
+            'gastos_fijos'        => $totales->sum('gastos_fijos'),
+            'ganancia_neta'       => $totales->sum('ganancia_neta'),
+            'cantidad_ventas'     => $totales->sum('cantidad_ventas'),
+            'cajas'               => $cajas,
         ]);
     }
 
@@ -357,11 +440,11 @@ class CajaController extends Controller
             ->bajoStock()
             ->get()
             ->map(fn ($i) => [
-                'nombre' => $i->nombre,
-                'unidad' => $i->unidad,
+                'nombre'       => $i->nombre,
+                'unidad'       => $i->unidad,
                 'stock_actual' => $i->stock_actual,
                 'stock_minimo' => $i->stock_minimo,
-                'estado' => $i->estado_stock,
+                'estado'       => $i->estado_stock,
             ]);
 
         return response()->json($insumos);
@@ -380,9 +463,9 @@ class CajaController extends Controller
         $total = $ventas->sum('total');
 
         $stats = [
-            'cantidad_ventas' => $ventas->count(),
-            'total_monto' => $total,
-            'total_efectivo' => $efectivo,
+            'cantidad_ventas'     => $ventas->count(),
+            'total_monto'         => $total,
+            'total_efectivo'      => $efectivo,
             'total_transferencia' => $transferencia,
         ];
 
@@ -391,18 +474,18 @@ class CajaController extends Controller
                 ->sum(fn ($d) => $d->costo_snapshot * $d->cantidad);
 
             $gananciaBruta = $total - $costoInsumos;
-            $gastosDia = GastoFijo::totalDiario();
-            $gananciaNeta = $gananciaBruta - $gastosDia;
+            $gastosDia     = GastoFijo::totalDiario();
+            $gananciaNeta  = $gananciaBruta - $gastosDia;
 
-            $stats['costo_insumos'] = $costoInsumos;
+            $stats['costo_insumos']  = $costoInsumos;
             $stats['ganancia_bruta'] = $gananciaBruta;
-            $stats['gastos_fijos'] = $gastosDia;
-            $stats['ganancia_neta'] = $gananciaNeta;
-            $stats['separacion'] = [
+            $stats['gastos_fijos']   = $gastosDia;
+            $stats['ganancia_neta']  = $gananciaNeta;
+            $stats['separacion']     = [
                 'reponer_insumos' => $costoInsumos,
-                'ahorro' => max(0, round($gananciaNeta * 0.10)),
-                'retiro' => max(0, round($gananciaNeta * 0.40)),
-                'negocio' => max(0, round($gananciaNeta * 0.50)),
+                'ahorro'          => max(0, round($gananciaNeta * 0.10)),
+                'retiro'          => max(0, round($gananciaNeta * 0.40)),
+                'negocio'         => max(0, round($gananciaNeta * 0.50)),
             ];
         }
 

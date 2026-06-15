@@ -34,6 +34,7 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::get('alertas-compra', [CajaController::class, 'alertasCompra']);
         Route::get('historial/{caja}', [CajaController::class, 'show']);
         Route::post('/{caja}/cerrar-manual', [CajaController::class, 'cerrarManual']);
+        Route::get('/resumen-rango', [CajaController::class, 'resumenPorRango']);
     });
 
     // ── Inventario ───────────────────────────────────────────────────────────
