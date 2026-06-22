@@ -60,9 +60,16 @@ class CajaController extends Controller
                 );
             }
 
-            return response()->json([
-                'message' => 'La caja de hoy ya fue cerrada.',
-            ], 422);
+            // La caja de hoy ya fue cerrada: la reabrimos en vez de bloquear.
+            $cajaExistente->update([
+                'estado'      => 'abierta',
+                'cerrada_por' => null,
+                'cerrada_at'  => null,
+            ]);
+
+            return response()->json(
+                $cajaExistente->fresh(['abiertaPor:id,name', 'cerradaPor:id,name'])
+            );
         }
 
         $caja = Caja::create([
