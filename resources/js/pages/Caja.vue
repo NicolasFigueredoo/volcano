@@ -165,6 +165,18 @@ const formVentaNotas = ref('');
 const formVentaItems = ref<{ variante_id: number; nombre: string; cantidad: number; precio: number }[]>([]);
 const menuParaAgregar = ref<number | ''>('');
 
+// Nuevo pedido en una caja puntual (abierta o cerrada)
+const agregandoVentaA = ref<Caja | null>(null);
+const formNuevaVenta = reactive({
+    mesa: '',
+    notas: '',
+    estado: 'pagado',
+});
+const formNuevaVentaItems = ref<{ variante_id: number; nombre: string; cantidad: number; precio: number }[]>([]);
+const nuevoMenuParaAgregar = ref<number | ''>('');
+const formNuevaVentaEfectivo = ref(0);
+const formNuevaVentaTransferencia = ref(0);
+
 const esAdmin = computed(() => data.value?.es_admin === true);
 const puedeOperarCaja = computed(() => data.value?.puede_operar_caja === true);
 
@@ -174,6 +186,10 @@ const ventasOrdenadas = computed(() =>
 
 const formVentaTotal = computed(() =>
     formVentaItems.value.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
+);
+
+const formNuevaVentaTotal = computed(() =>
+    formNuevaVentaItems.value.reduce((acc, i) => acc + i.precio * i.cantidad, 0)
 );
 
 const fmt = (n: any) => '$' + Math.round(Number(n ?? 0)).toLocaleString('es-AR');
@@ -366,6 +382,68 @@ async function guardarEdicionVenta() {
     await cargar();
 }
 
+// ── Venta: agregar pedido a una caja (abierta o cerrada) ─────────────────────
+
+function abrirNuevaVenta(caja: Caja) {
+    agregandoVentaA.value = caja;
+    formNuevaVenta.mesa = '';
+    formNuevaVenta.notas = '';
+    formNuevaVenta.estado = 'pagado';
+    formNuevaVentaItems.value = [];
+    nuevoMenuParaAgregar.value = '';
+    formNuevaVentaEfectivo.value = 0;
+    formNuevaVentaTransferencia.value = 0;
+}
+
+function cerrarNuevaVenta() {
+    agregandoVentaA.value = null;
+}
+
+function agregarItemNuevaVenta() {
+    if (!nuevoMenuParaAgregar.value) return;
+    const m = menuItems.value.find(mi => mi.id === nuevoMenuParaAgregar.value);
+    if (!m) return;
+
+    const existente = formNuevaVentaItems.value.find(i => i.variante_id === m.id);
+    if (existente) {
+        existente.cantidad++;
+    } else {
+        formNuevaVentaItems.value.push({ variante_id: m.id, nombre: m.nombre, cantidad: 1, precio: m.precio });
+    }
+    nuevoMenuParaAgregar.value = '';
+}
+
+async function guardarNuevaVenta() {
+    if (!agregandoVentaA.value) return;
+    if (!formNuevaVentaItems.value.length) {
+        alert('Agregá al menos un ítem al pedido.');
+        return;
+    }
+
+    const pagos = [];
+    if (formNuevaVentaEfectivo.value > 0) pagos.push({ metodo: 'efectivo', monto: formNuevaVentaEfectivo.value });
+    if (formNuevaVentaTransferencia.value > 0) pagos.push({ metodo: 'transferencia', monto: formNuevaVentaTransferencia.value });
+
+    if (!pagos.length) {
+        alert('Ingresá al menos un monto de pago (efectivo o transferencia).');
+        return;
+    }
+
+    await post(`/api/caja/${agregandoVentaA.value.id}/ventas`, {
+        mesa: formNuevaVenta.mesa || null,
+        notas: formNuevaVenta.notas || null,
+        estado: formNuevaVenta.estado,
+        items: formNuevaVentaItems.value.map(i => ({ variante_id: i.variante_id, cantidad: i.cantidad })),
+        pagos,
+    });
+
+    const cajaId = agregandoVentaA.value.id;
+    cerrarNuevaVenta();
+
+    if (cajaDetalle.value?.caja.id === cajaId) await verCajaGuardada(cajaDetalle.value.caja);
+    await cargar();
+}
+
 async function anularVenta(venta: Venta) {
     if (!confirm(`¿Anular el pedido #${venta.numero_orden}? Quedará marcado como anulado y no contará en los totales.`)) return;
 
@@ -477,6 +555,10 @@ onMounted(cargar);
                             variant="destructive" size="sm" @click="cerrarManual(data.caja)" :disabled="loading"
                         >
                             <Lock class="w-4 h-4 mr-1" /> Cerrar caja de hoy
+                        </Button>
+
+                        <Button v-if="data?.caja" variant="outline" size="sm" @click="abrirNuevaVenta(data.caja)">
+                            <Plus class="w-4 h-4 mr-1" /> Agregar pedido
                         </Button>
 
                         <Button v-if="data?.caja" variant="outline" size="sm" @click="abrirEdicionCaja(data.caja)">
@@ -861,6 +943,9 @@ onMounted(cargar);
                                         <Button variant="outline" size="sm" @click="verCajaGuardada(caja)" :disabled="cargandoCajaDetalle">
                                             <Eye class="w-4 h-4 mr-1" /> Ver
                                         </Button>
+                                        <button class="w-8 h-8 rounded border flex items-center justify-center hover:bg-muted" @click="abrirNuevaVenta(caja)" title="Agregar pedido">
+                                            <Plus class="w-4 h-4" />
+                                        </button>
                                         <button class="w-8 h-8 rounded border flex items-center justify-center hover:bg-muted" @click="abrirEdicionCaja(caja)" title="Editar caja">
                                             <Pencil class="w-4 h-4" />
                                         </button>
@@ -1030,6 +1115,101 @@ onMounted(cargar);
                 </div>
             </div>
 
+            <!-- Modal: agregar pedido a una caja -->
+            <div v-if="agregandoVentaA" class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+                <div class="bg-background border rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                    <div class="p-4 border-b flex items-center justify-between">
+                        <h2 class="text-lg font-semibold">Agregar pedido — caja del {{ fecha(agregandoVentaA.fecha_operativa) }}</h2>
+                        <button class="w-8 h-8 rounded-full border flex items-center justify-center hover:bg-muted" @click="cerrarNuevaVenta">
+                            <X class="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <div class="p-4 flex flex-col gap-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="flex flex-col gap-1">
+                                <label class="text-xs text-muted-foreground">Mesa (opcional)</label>
+                                <input v-model="formNuevaVenta.mesa" type="text" class="border rounded px-3 py-1.5 text-sm bg-background" />
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-xs text-muted-foreground">Estado</label>
+                                <select v-model="formNuevaVenta.estado" class="border rounded px-3 py-1.5 text-sm bg-background">
+                                    <option value="pendiente">Pendiente</option>
+                                    <option value="preparacion">En prep.</option>
+                                    <option value="pagado">Pagado</option>
+                                    <option value="entregado">Entregado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-muted-foreground">Agregar ítem</label>
+                            <div class="flex gap-2">
+                                <select v-model="nuevoMenuParaAgregar" class="flex-1 border rounded px-3 py-1.5 text-sm bg-background">
+                                    <option value="">Seleccionar producto...</option>
+                                    <option v-for="m in menuItems" :key="m.id" :value="m.id">{{ m.nombre }} — {{ fmt(m.precio) }}</option>
+                                </select>
+                                <Button size="sm" @click="agregarItemNuevaVenta" :disabled="!nuevoMenuParaAgregar">
+                                    <Plus class="w-4 h-4" />
+                                </Button>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-2">
+                            <div
+                                v-for="(item, idx) in formNuevaVentaItems"
+                                :key="item.variante_id"
+                                class="flex items-center justify-between border rounded px-3 py-2 text-sm"
+                            >
+                                <div>
+                                    <p class="font-medium">{{ item.nombre }}</p>
+                                    <p class="text-xs text-muted-foreground">{{ fmt(item.precio) }} c/u</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <button class="w-7 h-7 rounded border flex items-center justify-center hover:bg-muted" @click="restarCantidad(item, idx)">
+                                        <Minus class="w-3.5 h-3.5" />
+                                    </button>
+                                    <span class="w-6 text-center font-semibold">{{ item.cantidad }}</span>
+                                    <button class="w-7 h-7 rounded border flex items-center justify-center hover:bg-muted" @click="sumarCantidad(item)">
+                                        <Plus class="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <p v-if="!formNuevaVentaItems.length" class="text-xs text-muted-foreground">
+                                Sin ítems. Agregá al menos uno.
+                            </p>
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label class="text-xs text-muted-foreground">Notas</label>
+                            <textarea v-model="formNuevaVenta.notas" rows="2" class="border rounded px-3 py-1.5 text-sm bg-background"></textarea>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="flex flex-col gap-1">
+                                <label class="text-xs text-muted-foreground">Pago efectivo</label>
+                                <input v-model.number="formNuevaVentaEfectivo" type="number" min="0" class="border rounded px-3 py-1.5 text-sm bg-background" />
+                            </div>
+                            <div class="flex flex-col gap-1">
+                                <label class="text-xs text-muted-foreground">Pago transferencia</label>
+                                <input v-model.number="formNuevaVentaTransferencia" type="number" min="0" class="border rounded px-3 py-1.5 text-sm bg-background" />
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between border-t pt-3">
+                            <span class="text-sm text-muted-foreground">Total ítems</span>
+                            <span class="text-lg font-semibold">{{ fmt(formNuevaVentaTotal) }}</span>
+                        </div>
+
+                        <div class="flex justify-end gap-2 mt-2">
+                            <Button variant="outline" size="sm" @click="cerrarNuevaVenta">Cancelar</Button>
+                            <Button size="sm" @click="guardarNuevaVenta" :disabled="loading">Guardar pedido</Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Modal: detalle de caja guardada -->
             <div v-if="cajaDetalle" class="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
                 <div class="bg-background border rounded-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -1050,6 +1230,9 @@ onMounted(cargar);
                         <div class="flex items-center gap-2 shrink-0">
                             <Button v-if="cajaDetalle.caja.estado === 'abierta'" variant="destructive" size="sm" @click="cerrarManual(cajaDetalle.caja)" :disabled="loading">
                                 <Lock class="w-4 h-4 mr-1" /> Cerrar manualmente
+                            </Button>
+                            <Button variant="outline" size="sm" @click="abrirNuevaVenta(cajaDetalle.caja)">
+                                <Plus class="w-4 h-4 mr-1" /> Agregar pedido
                             </Button>
                             <Button variant="outline" size="sm" @click="abrirEdicionCaja(cajaDetalle.caja)">
                                 <Pencil class="w-4 h-4 mr-1" /> Editar caja

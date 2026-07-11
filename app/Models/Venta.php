@@ -182,4 +182,89 @@ class Venta extends Model
             return $venta;
         });
     }
+
+    /**
+     * Crea un pedido dentro de una caja puntual (abierta o cerrada), para
+     * carga retroactiva por parte del administrador.
+     */
+    public static function registrarEnCaja(Caja $caja, array $data, array $items, array $pagos, int $userId): self
+    {
+        return \DB::transaction(function () use ($caja, $data, $items, $pagos, $userId) {
+            $variantesMap = Variante::with('recetas.insumo', 'producto')
+                ->whereIn('id', collect($items)->pluck('variante_id'))
+                ->get()
+                ->keyBy('id');
+
+            $subtotal = collect($items)->sum(
+                fn($i) => ($variantesMap[$i['variante_id']]->precio_venta - ($i['descuento'] ?? 0)) * $i['cantidad']
+            );
+
+            $descuento = $data['descuento'] ?? 0;
+            $total = $subtotal - $descuento;
+
+            $ultimoOrden = self::where('caja_id', $caja->id)->max('numero_orden') ?? 0;
+
+            $venta = self::create([
+                'caja_id'         => $caja->id,
+                'fecha_operativa' => $caja->fecha_operativa,
+                'user_id'         => $userId,
+                'mesa'            => $data['mesa'] ?? null,
+                'estado'          => $data['estado'] ?? 'pagado',
+                'numero_orden'    => $ultimoOrden + 1,
+                'metodo_pago'     => count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto',
+                'subtotal'        => $subtotal,
+                'descuento'       => $descuento,
+                'total'           => $total,
+                'notas'           => $data['notas'] ?? null,
+            ]);
+
+            foreach ($pagos as $pago) {
+                if (($pago['monto'] ?? 0) > 0) {
+                    $venta->pagos()->create([
+                        'metodo' => $pago['metodo'],
+                        'monto'  => $pago['monto'],
+                    ]);
+                }
+            }
+
+            foreach ($items as $item) {
+                $variante = $variantesMap[$item['variante_id']];
+                $precioFinal = $variante->precio_venta - ($item['descuento'] ?? 0);
+
+                $venta->detalles()->create([
+                    'variante_id'     => $variante->id,
+                    'nombre_snapshot' => $variante->producto->nombre . ($variante->nombre ? ' — ' . $variante->nombre : ''),
+                    'precio_snapshot' => $precioFinal,
+                    'costo_snapshot'  => $variante->costo_calculado,
+                    'cantidad'        => $item['cantidad'],
+                    'subtotal'        => $precioFinal * $item['cantidad'],
+                ]);
+
+                foreach ($variante->recetas as $receta) {
+                    $insumo = $receta->insumo;
+                    $cantidadTotal = $receta->cantidad * $item['cantidad'];
+
+                    if (!$insumo->descuenta_stock) continue;
+
+                    $stockAnterior = $insumo->stock_actual;
+                    $stockNuevo = max(0, $stockAnterior - $cantidadTotal);
+
+                    $insumo->decrement('stock_actual', $cantidadTotal);
+
+                    MovimientoStock::create([
+                        'insumo_id'      => $insumo->id,
+                        'user_id'        => $userId,
+                        'tipo'           => 'salida',
+                        'cantidad'       => $cantidadTotal,
+                        'stock_anterior' => $stockAnterior,
+                        'stock_nuevo'    => $stockNuevo,
+                        'motivo'         => 'venta',
+                        'venta_id'       => $venta->id,
+                    ]);
+                }
+            }
+
+            return $venta;
+        });
+    }
 }

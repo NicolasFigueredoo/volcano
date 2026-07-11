@@ -224,6 +224,49 @@ class CajaController extends Controller
     }
 
     /**
+     * Agregar un pedido a una caja puntual (abierta o cerrada). Solo admin.
+     * Permite cargar ventas retroactivamente sin depender de la caja del día.
+     */
+    public function agregarVenta(Request $request, Caja $caja): JsonResponse
+    {
+        $user = Auth::user();
+
+        if (!$user->isAdmin()) {
+            return response()->json(['message' => 'Solo el administrador puede agregar pedidos.'], 403);
+        }
+
+        $data = $request->validate([
+            'mesa'                 => 'nullable|string|max:50',
+            'notas'                => 'nullable|string|max:500',
+            'estado'               => 'nullable|in:pendiente,preparacion,pagado,entregado',
+            'descuento'            => 'nullable|numeric|min:0',
+
+            'items'                => 'required|array|min:1',
+            'items.*.variante_id'  => 'required|integer|exists:variantes,id',
+            'items.*.cantidad'     => 'required|integer|min:1',
+
+            'pagos'                => 'required|array|min:1',
+            'pagos.*.metodo'       => 'required|in:efectivo,transferencia',
+            'pagos.*.monto'        => 'required|numeric|min:0',
+        ]);
+
+        $venta = Venta::registrarEnCaja(
+            $caja,
+            $request->only('mesa', 'notas', 'estado', 'descuento'),
+            $data['items'],
+            $data['pagos'],
+            $user->id
+        );
+
+        $this->recalcularTotalesSolo($caja);
+
+        return response()->json(
+            $venta->load('detalles', 'pagos', 'user:id,name'),
+            201
+        );
+    }
+
+    /**
      * Eliminar una caja. Las ventas asociadas quedan sueltas (caja_id null).
      */
     public function destroy(Caja $caja): JsonResponse

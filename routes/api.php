@@ -35,6 +35,7 @@ Route::middleware(['web', 'auth'])->group(function () {
         // Edición / eliminación de cajas (admin)
         Route::put('{caja}', [CajaController::class, 'update']);
         Route::delete('{caja}', [CajaController::class, 'destroy']);
+        Route::post('{caja}/ventas', [CajaController::class, 'agregarVenta']);
 
         // Ventas (pedidos) dentro de una caja (admin)
         Route::patch('ventas/{venta}/estado', [CajaController::class, 'actualizarEstadoVenta']);
