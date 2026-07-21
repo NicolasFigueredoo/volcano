@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Caja;
 use App\Models\DetalleVenta;
 use App\Models\GastoFijo;
+use App\Models\Insumo;
 use App\Models\Variante;
 use App\Models\Venta;
 use Carbon\Carbon;
@@ -37,7 +38,7 @@ class CajaController extends Controller
             'stats' => $stats,
             'ventas' => $ventas,
             'es_admin' => $user->isAdmin(),
-            'puede_operar_caja' => !$user->isAdmin(),
+            'puede_operar_caja' => ! $user->isAdmin(),
         ]);
     }
 
@@ -62,16 +63,16 @@ class CajaController extends Controller
                 ->where('activo', true)
                 ->get()
                 ->map(fn ($v) => [
-                    'id'     => $v->id,
-                    'nombre' => $v->producto->nombre . ($v->nombre ? ' — ' . $v->nombre : ''),
+                    'id' => $v->id,
+                    'nombre' => $v->producto->nombre.($v->nombre ? ' — '.$v->nombre : ''),
                     'precio' => $v->precio_venta,
-                    'costo'  => $v->costo_calculado,
+                    'costo' => $v->costo_calculado,
                 ])
             : [];
 
         return response()->json([
             'ventas' => $ventas,
-            'menu'   => $menu,
+            'menu' => $menu,
         ]);
     }
 
@@ -98,9 +99,9 @@ class CajaController extends Controller
 
             // La caja de hoy ya fue cerrada: la reabrimos en vez de bloquear.
             $cajaExistente->update([
-                'estado'      => 'abierta',
+                'estado' => 'abierta',
                 'cerrada_por' => null,
-                'cerrada_at'  => null,
+                'cerrada_at' => null,
             ]);
 
             return response()->json(
@@ -144,7 +145,7 @@ class CajaController extends Controller
 
         $caja = Caja::abiertaActual();
 
-        if (!$caja) {
+        if (! $caja) {
             return response()->json([
                 'message' => 'No hay una caja abierta.',
             ], 422);
@@ -161,7 +162,7 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json([
                 'message' => 'Solo el administrador puede cerrar cajas manualmente.',
             ], 403);
@@ -187,32 +188,32 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json([
                 'message' => 'Solo el administrador puede editar cajas.',
             ], 403);
         }
 
         $data = $request->validate([
-            'fecha_operativa'     => 'sometimes|date',
-            'estado'              => 'sometimes|in:abierta,cerrada',
-            'total_ventas'        => 'sometimes|numeric',
-            'total_efectivo'      => 'sometimes|numeric',
+            'fecha_operativa' => 'sometimes|date',
+            'estado' => 'sometimes|in:abierta,cerrada',
+            'total_ventas' => 'sometimes|numeric',
+            'total_efectivo' => 'sometimes|numeric',
             'total_transferencia' => 'sometimes|numeric',
-            'costo_insumos'       => 'sometimes|numeric',
-            'ganancia_bruta'      => 'sometimes|numeric',
-            'gastos_fijos'        => 'sometimes|numeric',
-            'ganancia_neta'       => 'sometimes|numeric',
-            'cantidad_ventas'     => 'sometimes|integer',
+            'costo_insumos' => 'sometimes|numeric',
+            'ganancia_bruta' => 'sometimes|numeric',
+            'gastos_fijos' => 'sometimes|numeric',
+            'ganancia_neta' => 'sometimes|numeric',
+            'cantidad_ventas' => 'sometimes|integer',
         ]);
 
-        if (($data['estado'] ?? null) === 'cerrada' && !$caja->cerrada_at) {
-            $data['cerrada_at']  = now();
+        if (($data['estado'] ?? null) === 'cerrada' && ! $caja->cerrada_at) {
+            $data['cerrada_at'] = now();
             $data['cerrada_por'] = $user->id;
         }
 
         if (($data['estado'] ?? null) === 'abierta') {
-            $data['cerrada_at']  = null;
+            $data['cerrada_at'] = null;
             $data['cerrada_por'] = null;
         }
 
@@ -231,23 +232,23 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json(['message' => 'Solo el administrador puede agregar pedidos.'], 403);
         }
 
         $data = $request->validate([
-            'mesa'                 => 'nullable|string|max:50',
-            'notas'                => 'nullable|string|max:500',
-            'estado'               => 'nullable|in:pendiente,preparacion,pagado,entregado',
-            'descuento'            => 'nullable|numeric|min:0',
+            'mesa' => 'nullable|string|max:50',
+            'notas' => 'nullable|string|max:500',
+            'estado' => 'nullable|in:pendiente,preparacion,pagado,entregado',
+            'descuento' => 'nullable|numeric|min:0',
 
-            'items'                => 'required|array|min:1',
-            'items.*.variante_id'  => 'required|integer|exists:variantes,id',
-            'items.*.cantidad'     => 'required|integer|min:1',
+            'items' => 'required|array|min:1',
+            'items.*.variante_id' => 'required|integer|exists:variantes,id',
+            'items.*.cantidad' => 'required|integer|min:1',
 
-            'pagos'                => 'required|array|min:1',
-            'pagos.*.metodo'       => 'required|in:efectivo,transferencia',
-            'pagos.*.monto'        => 'required|numeric|min:0',
+            'pagos' => 'required|array|min:1',
+            'pagos.*.metodo' => 'required|in:efectivo,transferencia',
+            'pagos.*.monto' => 'required|numeric|min:0',
         ]);
 
         $venta = Venta::registrarEnCaja(
@@ -273,7 +274,7 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json([
                 'message' => 'Solo el administrador puede eliminar cajas.',
             ], 403);
@@ -304,7 +305,7 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json([
                 'message' => 'Solo el administrador puede ver cajas guardadas.',
             ], 403);
@@ -333,14 +334,14 @@ class CajaController extends Controller
                 'caja' => $caja,
                 'ventas' => $ventas,
                 'stats_guardadas' => [
-                    'cantidad_ventas'     => $statsCalculadas['cantidad_ventas'],
-                    'total_monto'         => $statsCalculadas['total_monto'],
-                    'total_efectivo'      => $statsCalculadas['total_efectivo'],
+                    'cantidad_ventas' => $statsCalculadas['cantidad_ventas'],
+                    'total_monto' => $statsCalculadas['total_monto'],
+                    'total_efectivo' => $statsCalculadas['total_efectivo'],
                     'total_transferencia' => $statsCalculadas['total_transferencia'],
-                    'costo_insumos'       => $statsCalculadas['costo_insumos'] ?? 0,
-                    'ganancia_bruta'      => $statsCalculadas['ganancia_bruta'] ?? 0,
-                    'gastos_fijos'        => $statsCalculadas['gastos_fijos'] ?? 0,
-                    'ganancia_neta'       => $statsCalculadas['ganancia_neta'] ?? 0,
+                    'costo_insumos' => $statsCalculadas['costo_insumos'] ?? 0,
+                    'ganancia_bruta' => $statsCalculadas['ganancia_bruta'] ?? 0,
+                    'gastos_fijos' => $statsCalculadas['gastos_fijos'] ?? 0,
+                    'ganancia_neta' => $statsCalculadas['ganancia_neta'] ?? 0,
                 ],
                 'resumen' => $caja->resumen_json ?? [],
             ]);
@@ -350,14 +351,14 @@ class CajaController extends Controller
             'caja' => $caja,
             'ventas' => $ventas,
             'stats_guardadas' => [
-                'cantidad_ventas'     => $caja->cantidad_ventas,
-                'total_monto'         => $caja->total_ventas,
-                'total_efectivo'      => $caja->total_efectivo,
+                'cantidad_ventas' => $caja->cantidad_ventas,
+                'total_monto' => $caja->total_ventas,
+                'total_efectivo' => $caja->total_efectivo,
                 'total_transferencia' => $caja->total_transferencia,
-                'costo_insumos'       => $caja->costo_insumos,
-                'ganancia_bruta'      => $caja->ganancia_bruta,
-                'gastos_fijos'        => $caja->gastos_fijos,
-                'ganancia_neta'       => $caja->ganancia_neta,
+                'costo_insumos' => $caja->costo_insumos,
+                'ganancia_bruta' => $caja->ganancia_bruta,
+                'gastos_fijos' => $caja->gastos_fijos,
+                'ganancia_neta' => $caja->ganancia_neta,
             ],
             'resumen' => $caja->resumen_json ?? [],
         ]);
@@ -378,26 +379,26 @@ class CajaController extends Controller
         }
 
         $cajas = Caja::whereBetween('fecha_operativa', [
-                $jueves->toDateString(),
-                $domingo->toDateString(),
-            ])
+            $jueves->toDateString(),
+            $domingo->toDateString(),
+        ])
             ->orderBy('fecha_operativa')
             ->get();
 
         $totales = $this->totalesDeCajas($cajas);
 
         return response()->json([
-            'desde'               => $jueves->toDateString(),
-            'hasta'               => $domingo->toDateString(),
-            'total_ventas'        => $totales->sum('total_ventas'),
-            'total_efectivo'      => $totales->sum('total_efectivo'),
+            'desde' => $jueves->toDateString(),
+            'hasta' => $domingo->toDateString(),
+            'total_ventas' => $totales->sum('total_ventas'),
+            'total_efectivo' => $totales->sum('total_efectivo'),
             'total_transferencia' => $totales->sum('total_transferencia'),
-            'costo_insumos'       => $totales->sum('costo_insumos'),
-            'ganancia_bruta'      => $totales->sum('ganancia_bruta'),
-            'gastos_fijos'        => $totales->sum('gastos_fijos'),
-            'ganancia_neta'       => $totales->sum('ganancia_neta'),
-            'cantidad_ventas'     => $totales->sum('cantidad_ventas'),
-            'cajas'               => $cajas,
+            'costo_insumos' => $totales->sum('costo_insumos'),
+            'ganancia_bruta' => $totales->sum('ganancia_bruta'),
+            'gastos_fijos' => $totales->sum('gastos_fijos'),
+            'ganancia_neta' => $totales->sum('ganancia_neta'),
+            'cantidad_ventas' => $totales->sum('cantidad_ventas'),
+            'cajas' => $cajas,
         ]);
     }
 
@@ -418,17 +419,133 @@ class CajaController extends Controller
         $totales = $this->totalesDeCajas($cajas);
 
         return response()->json([
-            'desde'               => $desde,
-            'hasta'               => $hasta,
-            'total_ventas'        => $totales->sum('total_ventas'),
-            'total_efectivo'      => $totales->sum('total_efectivo'),
+            'desde' => $desde,
+            'hasta' => $hasta,
+            'total_ventas' => $totales->sum('total_ventas'),
+            'total_efectivo' => $totales->sum('total_efectivo'),
             'total_transferencia' => $totales->sum('total_transferencia'),
-            'costo_insumos'       => $totales->sum('costo_insumos'),
-            'ganancia_bruta'      => $totales->sum('ganancia_bruta'),
-            'gastos_fijos'        => $totales->sum('gastos_fijos'),
-            'ganancia_neta'       => $totales->sum('ganancia_neta'),
-            'cantidad_ventas'     => $totales->sum('cantidad_ventas'),
-            'cajas'               => $cajas,
+            'costo_insumos' => $totales->sum('costo_insumos'),
+            'ganancia_bruta' => $totales->sum('ganancia_bruta'),
+            'gastos_fijos' => $totales->sum('gastos_fijos'),
+            'ganancia_neta' => $totales->sum('ganancia_neta'),
+            'cantidad_ventas' => $totales->sum('cantidad_ventas'),
+            'cajas' => $cajas,
+        ]);
+    }
+
+    /**
+     * Punto de equilibrio y rentabilidad. Solo admin.
+     *
+     * Devuelve: gastos fijos del día (con desglose), margen bruto promedio
+     * (medido sobre las cajas cerradas reales, con fallback al menú), el punto
+     * de equilibrio en $ y en pedidos, el estado en vivo del día de hoy
+     * (cuánto falta para no perder / si va en rojo) y el margen real de cada
+     * variante activa para detectar los productos que dejan poco.
+     */
+    public function rentabilidad(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+
+        if (! $user->isAdmin()) {
+            return response()->json(['message' => 'Solo el administrador puede ver la rentabilidad.'], 403);
+        }
+
+        // ── Gastos fijos del día (activos) con desglose ──────────────────────
+        $gastos = GastoFijo::where('activo', true)->get();
+        $gastosFijosDia = round($gastos->sum('costo_diario'), 2);
+
+        $desgloseGastos = $gastos
+            ->sortByDesc('costo_diario')
+            ->values()
+            ->map(fn ($g) => [
+                'nombre' => $g->nombre,
+                'monto_mensual' => (float) $g->monto_mensual,
+                'costo_diario' => $g->costo_diario,
+            ]);
+
+        // ── Margen bruto promedio: medido sobre las cajas cerradas reales ────
+        // (ganancia bruta acumulada / ventas acumuladas). Es el margen "real"
+        // con el mix de ventas que efectivamente tenés, no un promedio teórico.
+        $cajasCerradas = Caja::cerrada()->where('total_ventas', '>', 0)->get();
+        $ventasHist = (float) $cajasCerradas->sum('total_ventas');
+        $brutaHist = (float) $cajasCerradas->sum('ganancia_bruta');
+
+        $origenMargen = 'ventas';
+        if ($ventasHist > 0) {
+            $margenRatio = $brutaHist / $ventasHist;
+        } else {
+            // Fallback: promedio del menú activo ponderado nada más que por ítem.
+            $variantesMenu = Variante::activo()->where('precio_venta', '>', 0)->get();
+            $margenRatio = $variantesMenu->count()
+                ? $variantesMenu->avg(fn ($v) => ($v->precio_venta - $v->costo_calculado) / $v->precio_venta)
+                : 0.0;
+            $origenMargen = 'menu';
+        }
+        $margenPct = round($margenRatio * 100, 1);
+
+        // ── Punto de equilibrio ──────────────────────────────────────────────
+        // Ventas necesarias para que la ganancia bruta cubra los gastos fijos.
+        $ventasEquilibrio = $margenRatio > 0
+            ? round($gastosFijosDia / $margenRatio, 2)
+            : 0.0;
+
+        // Ticket promedio (sobre cajas cerradas) para expresar el equilibrio
+        // también en cantidad de pedidos.
+        $pedidosHist = (int) $cajasCerradas->sum('cantidad_ventas');
+        $ticketPromedio = $pedidosHist > 0 ? round($ventasHist / $pedidosHist, 2) : 0.0;
+        $pedidosEquilibrio = $ticketPromedio > 0
+            ? (int) ceil($ventasEquilibrio / $ticketPromedio)
+            : 0;
+
+        // ── Estado en vivo del día de hoy ────────────────────────────────────
+        $cajaHoy = Caja::whereDate('fecha_operativa', Caja::fechaOperativaActual())->first();
+        $ventasHoyCol = $cajaHoy
+            ? Venta::where('caja_id', $cajaHoy->id)->with(['detalles', 'pagos'])->get()
+            : collect();
+        $statsHoy = $this->calcularStats($ventasHoyCol, true);
+
+        $vendidoHoy = (float) ($statsHoy['total_monto'] ?? 0);
+        $netaHoy = (float) ($statsHoy['ganancia_neta'] ?? -$gastosFijosDia);
+        $faltaEquilibrio = max(0, round($ventasEquilibrio - $vendidoHoy, 2));
+        $progresoPct = $ventasEquilibrio > 0
+            ? min(100, round($vendidoHoy / $ventasEquilibrio * 100, 1))
+            : 0.0;
+
+        // ── Margen real por producto (variante activa) ───────────────────────
+        $productos = Variante::activo()
+            ->with('producto:id,nombre')
+            ->get()
+            ->map(fn ($v) => [
+                'id' => $v->id,
+                'nombre' => $v->producto->nombre.($v->nombre ? ' — '.$v->nombre : ''),
+                'precio' => (float) $v->precio_venta,
+                'costo' => (float) $v->costo_calculado,
+                'ganancia' => $v->ganancia,
+                'margen' => $v->margen,
+            ])
+            ->sortBy('margen')
+            ->values();
+
+        return response()->json([
+            'gastos_fijos_dia' => $gastosFijosDia,
+            'desglose_gastos' => $desgloseGastos,
+            'margen_pct' => $margenPct,
+            'origen_margen' => $origenMargen,
+            'ventas_equilibrio' => $ventasEquilibrio,
+            'ticket_promedio' => $ticketPromedio,
+            'pedidos_equilibrio' => $pedidosEquilibrio,
+            'hoy' => [
+                'tiene_caja' => (bool) $cajaHoy,
+                'estado_caja' => $cajaHoy?->estado,
+                'vendido' => $vendidoHoy,
+                'ganancia_neta' => $netaHoy,
+                'falta_equilibrio' => $faltaEquilibrio,
+                'progreso_pct' => $progresoPct,
+                'en_rojo' => $netaHoy < 0,
+                'cantidad_ventas' => (int) ($statsHoy['cantidad_ventas'] ?? 0),
+            ],
+            'productos' => $productos,
+            'dias_con_datos' => $cajasCerradas->count(),
         ]);
     }
 
@@ -436,7 +553,7 @@ class CajaController extends Controller
     {
         $caja = Caja::abiertaActual();
 
-        if (!$caja) {
+        if (! $caja) {
             return response()->json([]);
         }
 
@@ -451,15 +568,15 @@ class CajaController extends Controller
 
     public function alertasCompra(): JsonResponse
     {
-        $insumos = \App\Models\Insumo::activo()
+        $insumos = Insumo::activo()
             ->bajoStock()
             ->get()
             ->map(fn ($i) => [
-                'nombre'       => $i->nombre,
-                'unidad'       => $i->unidad,
+                'nombre' => $i->nombre,
+                'unidad' => $i->unidad,
                 'stock_actual' => $i->stock_actual,
                 'stock_minimo' => $i->stock_minimo,
-                'estado'       => $i->estado_stock,
+                'estado' => $i->estado_stock,
             ]);
 
         return response()->json($insumos);
@@ -502,7 +619,7 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json(['message' => 'Solo el administrador puede editar ventas.'], 403);
         }
 
@@ -511,10 +628,10 @@ class CajaController extends Controller
         }
 
         $data = $request->validate([
-            'notas'                => 'nullable|string|max:500',
-            'items'                => 'required|array|min:1',
-            'items.*.variante_id'  => 'required|integer|exists:variantes,id',
-            'items.*.cantidad'     => 'required|integer|min:1',
+            'notas' => 'nullable|string|max:500',
+            'items' => 'required|array|min:1',
+            'items.*.variante_id' => 'required|integer|exists:variantes,id',
+            'items.*.cantidad' => 'required|integer|min:1',
         ]);
 
         \DB::transaction(function () use ($venta, $data) {
@@ -529,13 +646,13 @@ class CajaController extends Controller
                 $subtotal += $itemSubtotal;
 
                 DetalleVenta::create([
-                    'venta_id'        => $venta->id,
-                    'variante_id'     => $variante->id,
-                    'nombre_snapshot' => $variante->producto->nombre . ($variante->nombre ? ' — ' . $variante->nombre : ''),
+                    'venta_id' => $venta->id,
+                    'variante_id' => $variante->id,
+                    'nombre_snapshot' => $variante->producto->nombre.($variante->nombre ? ' — '.$variante->nombre : ''),
                     'precio_snapshot' => $variante->precio_venta,
-                    'costo_snapshot'  => $variante->costo_calculado,
-                    'cantidad'        => $item['cantidad'],
-                    'subtotal'        => $itemSubtotal,
+                    'costo_snapshot' => $variante->costo_calculado,
+                    'cantidad' => $item['cantidad'],
+                    'subtotal' => $itemSubtotal,
                 ]);
             }
 
@@ -543,8 +660,8 @@ class CajaController extends Controller
 
             $venta->update([
                 'subtotal' => $subtotal,
-                'total'    => $total,
-                'notas'    => $data['notas'] ?? $venta->notas,
+                'total' => $total,
+                'notas' => $data['notas'] ?? $venta->notas,
             ]);
         });
 
@@ -566,7 +683,7 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user->isAdmin()) {
+        if (! $user->isAdmin()) {
             return response()->json(['message' => 'Solo el administrador puede anular ventas.'], 403);
         }
 
@@ -609,9 +726,9 @@ class CajaController extends Controller
             ->flatMap->detalles
             ->groupBy('nombre_snapshot')
             ->map(fn ($g) => [
-                'nombre'   => $g->first()->nombre_snapshot,
+                'nombre' => $g->first()->nombre_snapshot,
                 'cantidad' => $g->sum('cantidad'),
-                'monto'    => $g->sum('subtotal'),
+                'monto' => $g->sum('subtotal'),
             ])
             ->sortByDesc('cantidad')
             ->values()
@@ -619,18 +736,18 @@ class CajaController extends Controller
             ->toArray();
 
         $caja->update([
-            'estado'              => 'cerrada',
-            'cerrada_por'         => $cerradaPor,
-            'cerrada_at'          => now(),
-            'total_ventas'        => $stats['total_monto'],
-            'total_efectivo'      => $stats['total_efectivo'],
+            'estado' => 'cerrada',
+            'cerrada_por' => $cerradaPor,
+            'cerrada_at' => now(),
+            'total_ventas' => $stats['total_monto'],
+            'total_efectivo' => $stats['total_efectivo'],
             'total_transferencia' => $stats['total_transferencia'],
-            'costo_insumos'       => $stats['costo_insumos'] ?? 0,
-            'ganancia_bruta'      => $stats['ganancia_bruta'] ?? 0,
-            'gastos_fijos'        => $stats['gastos_fijos'] ?? 0,
-            'ganancia_neta'       => $stats['ganancia_neta'] ?? 0,
-            'cantidad_ventas'     => $stats['cantidad_ventas'],
-            'resumen_json'        => ['productos_top' => $productosTop],
+            'costo_insumos' => $stats['costo_insumos'] ?? 0,
+            'ganancia_bruta' => $stats['ganancia_bruta'] ?? 0,
+            'gastos_fijos' => $stats['gastos_fijos'] ?? 0,
+            'ganancia_neta' => $stats['ganancia_neta'] ?? 0,
+            'cantidad_ventas' => $stats['cantidad_ventas'],
+            'resumen_json' => ['productos_top' => $productosTop],
         ]);
     }
 
@@ -647,14 +764,14 @@ class CajaController extends Controller
         $stats = $this->calcularStats($ventas, true);
 
         $caja->update([
-            'total_ventas'        => $stats['total_monto'],
-            'total_efectivo'      => $stats['total_efectivo'],
+            'total_ventas' => $stats['total_monto'],
+            'total_efectivo' => $stats['total_efectivo'],
             'total_transferencia' => $stats['total_transferencia'],
-            'costo_insumos'       => $stats['costo_insumos'] ?? 0,
-            'ganancia_bruta'      => $stats['ganancia_bruta'] ?? 0,
-            'gastos_fijos'        => $stats['gastos_fijos'] ?? 0,
-            'ganancia_neta'       => $stats['ganancia_neta'] ?? 0,
-            'cantidad_ventas'     => $stats['cantidad_ventas'],
+            'costo_insumos' => $stats['costo_insumos'] ?? 0,
+            'ganancia_bruta' => $stats['ganancia_bruta'] ?? 0,
+            'gastos_fijos' => $stats['gastos_fijos'] ?? 0,
+            'ganancia_neta' => $stats['ganancia_neta'] ?? 0,
+            'cantidad_ventas' => $stats['cantidad_ventas'],
         ]);
     }
 
@@ -664,26 +781,28 @@ class CajaController extends Controller
             if ($caja->estado === 'abierta' || (int) $caja->total_ventas === 0) {
                 $ventas = Venta::where('caja_id', $caja->id)->with(['detalles', 'pagos'])->get();
                 $stats = $this->calcularStats($ventas, true);
+
                 return [
-                    'total_ventas'        => $stats['total_monto'],
-                    'total_efectivo'      => $stats['total_efectivo'],
+                    'total_ventas' => $stats['total_monto'],
+                    'total_efectivo' => $stats['total_efectivo'],
                     'total_transferencia' => $stats['total_transferencia'],
-                    'costo_insumos'       => $stats['costo_insumos'] ?? 0,
-                    'ganancia_bruta'      => $stats['ganancia_bruta'] ?? 0,
-                    'gastos_fijos'        => $stats['gastos_fijos'] ?? 0,
-                    'ganancia_neta'       => $stats['ganancia_neta'] ?? 0,
-                    'cantidad_ventas'     => $stats['cantidad_ventas'],
+                    'costo_insumos' => $stats['costo_insumos'] ?? 0,
+                    'ganancia_bruta' => $stats['ganancia_bruta'] ?? 0,
+                    'gastos_fijos' => $stats['gastos_fijos'] ?? 0,
+                    'ganancia_neta' => $stats['ganancia_neta'] ?? 0,
+                    'cantidad_ventas' => $stats['cantidad_ventas'],
                 ];
             }
+
             return [
-                'total_ventas'        => $caja->total_ventas,
-                'total_efectivo'      => $caja->total_efectivo,
+                'total_ventas' => $caja->total_ventas,
+                'total_efectivo' => $caja->total_efectivo,
                 'total_transferencia' => $caja->total_transferencia,
-                'costo_insumos'       => $caja->costo_insumos,
-                'ganancia_bruta'      => $caja->ganancia_bruta,
-                'gastos_fijos'        => $caja->gastos_fijos,
-                'ganancia_neta'       => $caja->ganancia_neta,
-                'cantidad_ventas'     => $caja->cantidad_ventas,
+                'costo_insumos' => $caja->costo_insumos,
+                'ganancia_bruta' => $caja->ganancia_bruta,
+                'gastos_fijos' => $caja->gastos_fijos,
+                'ganancia_neta' => $caja->ganancia_neta,
+                'cantidad_ventas' => $caja->cantidad_ventas,
             ];
         });
     }
@@ -707,9 +826,9 @@ class CajaController extends Controller
         $total = $ventas->sum('total');
 
         $stats = [
-            'cantidad_ventas'     => $ventas->count(),
-            'total_monto'         => $total,
-            'total_efectivo'      => $efectivo,
+            'cantidad_ventas' => $ventas->count(),
+            'total_monto' => $total,
+            'total_efectivo' => $efectivo,
             'total_transferencia' => $transferencia,
         ];
 
@@ -718,18 +837,18 @@ class CajaController extends Controller
                 ->sum(fn ($d) => $d->costo_snapshot * $d->cantidad);
 
             $gananciaBruta = $total - $costoInsumos;
-            $gastosDia     = GastoFijo::totalDiario();
-            $gananciaNeta  = $gananciaBruta - $gastosDia;
+            $gastosDia = GastoFijo::totalDiario();
+            $gananciaNeta = $gananciaBruta - $gastosDia;
 
-            $stats['costo_insumos']  = $costoInsumos;
+            $stats['costo_insumos'] = $costoInsumos;
             $stats['ganancia_bruta'] = $gananciaBruta;
-            $stats['gastos_fijos']   = $gastosDia;
-            $stats['ganancia_neta']  = $gananciaNeta;
-            $stats['separacion']     = [
+            $stats['gastos_fijos'] = $gastosDia;
+            $stats['ganancia_neta'] = $gananciaNeta;
+            $stats['separacion'] = [
                 'reponer_insumos' => $costoInsumos,
-                'ahorro'          => max(0, round($gananciaNeta * 0.10)),
-                'retiro'          => max(0, round($gananciaNeta * 0.40)),
-                'negocio'         => max(0, round($gananciaNeta * 0.50)),
+                'ahorro' => max(0, round($gananciaNeta * 0.10)),
+                'retiro' => max(0, round($gananciaNeta * 0.40)),
+                'negocio' => max(0, round($gananciaNeta * 0.50)),
             ];
         }
 
