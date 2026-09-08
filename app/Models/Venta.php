@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Observers\VentaObserver;
+use App\Services\SeparacionService;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Caja;
 
+#[ObservedBy(VentaObserver::class)]
 class Venta extends Model
 {
     protected $fillable = [
@@ -25,9 +28,9 @@ class Venta extends Model
     ];
 
     protected $casts = [
-        'subtotal'   => 'decimal:2',
-        'descuento'  => 'decimal:2',
-        'total'      => 'decimal:2',
+        'subtotal' => 'decimal:2',
+        'descuento' => 'decimal:2',
+        'total' => 'decimal:2',
         'cerrada_at' => 'datetime',
     ];
 
@@ -77,6 +80,7 @@ class Venta extends Model
     public static function proximoNumeroOrden(): int
     {
         $ultimo = self::whereDate('created_at', today())->max('numero_orden') ?? 0;
+
         return ($ultimo % 99) + 1;
     }
 
@@ -93,9 +97,6 @@ class Venta extends Model
     public static function registrar(array $data, array $items, array $pagos, int $userId): self
     {
 
-
-
-
         return \DB::transaction(function () use ($data, $items, $pagos, $userId) {
             $variantesMap = Variante::with('recetas.insumo', 'producto')
                 ->whereIn('id', collect($items)->pluck('variante_id'))
@@ -103,13 +104,12 @@ class Venta extends Model
                 ->keyBy('id');
 
             $subtotal = collect($items)->sum(
-                fn($i) => ($variantesMap[$i['variante_id']]->precio_venta - ($i['descuento'] ?? 0)) * $i['cantidad']
+                fn ($i) => ($variantesMap[$i['variante_id']]->precio_venta - ($i['descuento'] ?? 0)) * $i['cantidad']
             );
-
 
             $caja = Caja::abiertaActual();
 
-            if (!$caja) {
+            if (! $caja) {
                 throw new \Exception('No hay una caja abierta para registrar ventas.');
             }
 
@@ -119,15 +119,15 @@ class Venta extends Model
             $venta = self::create([
                 'caja_id' => $caja->id,
                 'fecha_operativa' => $caja->fecha_operativa,
-                'user_id'      => $userId,
-                'mesa'         => $data['mesa'] ?? null,
-                'estado'       => 'pendiente',
+                'user_id' => $userId,
+                'mesa' => $data['mesa'] ?? null,
+                'estado' => 'pendiente',
                 'numero_orden' => self::proximoNumeroOrden(),
-                'metodo_pago'  => count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto',
-                'subtotal'     => $subtotal,
-                'descuento'    => $descuento,
-                'total'        => $total,
-                'notas'        => $data['notas'] ?? null,
+                'metodo_pago' => count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto',
+                'subtotal' => $subtotal,
+                'descuento' => $descuento,
+                'total' => $total,
+                'notas' => $data['notas'] ?? null,
             ]);
 
             // Registrar pagos
@@ -135,7 +135,7 @@ class Venta extends Model
                 if (($pago['monto'] ?? 0) > 0) {
                     $venta->pagos()->create([
                         'metodo' => $pago['metodo'],
-                        'monto'  => $pago['monto'],
+                        'monto' => $pago['monto'],
                     ]);
                 }
             }
@@ -146,12 +146,12 @@ class Venta extends Model
                 $precioFinal = $variante->precio_venta - ($item['descuento'] ?? 0);
 
                 $venta->detalles()->create([
-                    'variante_id'     => $variante->id,
-                    'nombre_snapshot' => $variante->producto->nombre . ' ' . $variante->nombre,
+                    'variante_id' => $variante->id,
+                    'nombre_snapshot' => $variante->producto->nombre.' '.$variante->nombre,
                     'precio_snapshot' => $precioFinal,
-                    'costo_snapshot'  => $variante->costo_calculado,
-                    'cantidad'        => $item['cantidad'],
-                    'subtotal'        => $precioFinal * $item['cantidad'],
+                    'costo_snapshot' => $variante->costo_calculado,
+                    'cantidad' => $item['cantidad'],
+                    'subtotal' => $precioFinal * $item['cantidad'],
                 ]);
 
                 foreach ($variante->recetas as $receta) {
@@ -159,7 +159,9 @@ class Venta extends Model
                     $cantidadTotal = $receta->cantidad * $item['cantidad'];
 
                     // Solo descontar si el insumo está marcado para descontar stock
-                    if (!$insumo->descuenta_stock) continue;
+                    if (! $insumo->descuenta_stock) {
+                        continue;
+                    }
 
                     $stockAnterior = $insumo->stock_actual;
                     $stockNuevo = max(0, $stockAnterior - $cantidadTotal);
@@ -167,17 +169,21 @@ class Venta extends Model
                     $insumo->decrement('stock_actual', $cantidadTotal);
 
                     MovimientoStock::create([
-                        'insumo_id'      => $insumo->id,
-                        'user_id'        => $userId,
-                        'tipo'           => 'salida',
-                        'cantidad'       => $cantidadTotal,
+                        'insumo_id' => $insumo->id,
+                        'user_id' => $userId,
+                        'tipo' => 'salida',
+                        'cantidad' => $cantidadTotal,
                         'stock_anterior' => $stockAnterior,
-                        'stock_nuevo'    => $stockNuevo,
-                        'motivo'         => 'venta',
-                        'venta_id'       => $venta->id,
+                        'stock_nuevo' => $stockNuevo,
+                        'motivo' => 'venta',
+                        'venta_id' => $venta->id,
                     ]);
                 }
             }
+
+            // La venta puede nacer ya pagada, antes de tener detalles: se
+            // sincroniza aca la plata a apartar para reponer insumos.
+            SeparacionService::sincronizar($venta);
 
             return $venta;
         });
@@ -196,7 +202,7 @@ class Venta extends Model
                 ->keyBy('id');
 
             $subtotal = collect($items)->sum(
-                fn($i) => ($variantesMap[$i['variante_id']]->precio_venta - ($i['descuento'] ?? 0)) * $i['cantidad']
+                fn ($i) => ($variantesMap[$i['variante_id']]->precio_venta - ($i['descuento'] ?? 0)) * $i['cantidad']
             );
 
             $descuento = $data['descuento'] ?? 0;
@@ -205,24 +211,24 @@ class Venta extends Model
             $ultimoOrden = self::where('caja_id', $caja->id)->max('numero_orden') ?? 0;
 
             $venta = self::create([
-                'caja_id'         => $caja->id,
+                'caja_id' => $caja->id,
                 'fecha_operativa' => $caja->fecha_operativa,
-                'user_id'         => $userId,
-                'mesa'            => $data['mesa'] ?? null,
-                'estado'          => $data['estado'] ?? 'pagado',
-                'numero_orden'    => $ultimoOrden + 1,
-                'metodo_pago'     => count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto',
-                'subtotal'        => $subtotal,
-                'descuento'       => $descuento,
-                'total'           => $total,
-                'notas'           => $data['notas'] ?? null,
+                'user_id' => $userId,
+                'mesa' => $data['mesa'] ?? null,
+                'estado' => $data['estado'] ?? 'pagado',
+                'numero_orden' => $ultimoOrden + 1,
+                'metodo_pago' => count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto',
+                'subtotal' => $subtotal,
+                'descuento' => $descuento,
+                'total' => $total,
+                'notas' => $data['notas'] ?? null,
             ]);
 
             foreach ($pagos as $pago) {
                 if (($pago['monto'] ?? 0) > 0) {
                     $venta->pagos()->create([
                         'metodo' => $pago['metodo'],
-                        'monto'  => $pago['monto'],
+                        'monto' => $pago['monto'],
                     ]);
                 }
             }
@@ -232,19 +238,21 @@ class Venta extends Model
                 $precioFinal = $variante->precio_venta - ($item['descuento'] ?? 0);
 
                 $venta->detalles()->create([
-                    'variante_id'     => $variante->id,
-                    'nombre_snapshot' => $variante->producto->nombre . ($variante->nombre ? ' — ' . $variante->nombre : ''),
+                    'variante_id' => $variante->id,
+                    'nombre_snapshot' => $variante->producto->nombre.($variante->nombre ? ' — '.$variante->nombre : ''),
                     'precio_snapshot' => $precioFinal,
-                    'costo_snapshot'  => $variante->costo_calculado,
-                    'cantidad'        => $item['cantidad'],
-                    'subtotal'        => $precioFinal * $item['cantidad'],
+                    'costo_snapshot' => $variante->costo_calculado,
+                    'cantidad' => $item['cantidad'],
+                    'subtotal' => $precioFinal * $item['cantidad'],
                 ]);
 
                 foreach ($variante->recetas as $receta) {
                     $insumo = $receta->insumo;
                     $cantidadTotal = $receta->cantidad * $item['cantidad'];
 
-                    if (!$insumo->descuenta_stock) continue;
+                    if (! $insumo->descuenta_stock) {
+                        continue;
+                    }
 
                     $stockAnterior = $insumo->stock_actual;
                     $stockNuevo = max(0, $stockAnterior - $cantidadTotal);
@@ -252,17 +260,21 @@ class Venta extends Model
                     $insumo->decrement('stock_actual', $cantidadTotal);
 
                     MovimientoStock::create([
-                        'insumo_id'      => $insumo->id,
-                        'user_id'        => $userId,
-                        'tipo'           => 'salida',
-                        'cantidad'       => $cantidadTotal,
+                        'insumo_id' => $insumo->id,
+                        'user_id' => $userId,
+                        'tipo' => 'salida',
+                        'cantidad' => $cantidadTotal,
                         'stock_anterior' => $stockAnterior,
-                        'stock_nuevo'    => $stockNuevo,
-                        'motivo'         => 'venta',
-                        'venta_id'       => $venta->id,
+                        'stock_nuevo' => $stockNuevo,
+                        'motivo' => 'venta',
+                        'venta_id' => $venta->id,
                     ]);
                 }
             }
+
+            // La venta puede nacer ya pagada, antes de tener detalles: se
+            // sincroniza aca la plata a apartar para reponer insumos.
+            SeparacionService::sincronizar($venta);
 
             return $venta;
         });

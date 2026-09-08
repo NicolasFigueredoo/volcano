@@ -10,37 +10,38 @@ class InsumosSeeder extends Seeder
     public function run(): void
     {
         $insumos = [
-            // nombre                   | unidad              | costo_unit | stock_actual | stock_minimo
-            ['Carne (vacío)',            'medallón 100g',       1590,          0,              20],
-            ['Pan de hamburguesa',       'unidad',               417,         60,              12],
-            ['Cheddar',                  'feta',                 169,        147,              50],
-            ['Panceta',                  'porción',              321,         10,              10],
-            ['Papas',                    'porción 150g',         500,          1,               8],
-            ['Cebolla',                  'media unidad',         100,          6,               8],
-            ['Tomate',                   'porción',              100,          0,               4],
-            ['Lechuga',                  'porción',              100,          0,               4],
-            ['Verdeo',                   'porción',              200,          0,               2],
-            ['Huevo',                    'unidad',               150,          8,               6],
-            ['Bolsa delivery',           'unidad',                55,         50,              20],
-            ['Cartón papas',             'unidad',                75,        100,              20],
-            ['Aluminio',                 'unidad',               155,        160,              30],
-            ['Aceite freidora',          'por venta',            222,          1,               3],
-            ['Garrafa',                  'por venta',            278,          0,               1],
-            ['Salsa',                    'por burger',           200,          0,               2],
-            ['Coca Cola',                'lata',                1200,          0,              12],
-            ['Sprite',                   'lata',                 600,          0,              12],
+            // nombre                   | unidad              | costo_unit | stock_actual | stock_minimo | grupo_separacion
+            ['Carne (vacío)',            'medallón 100g',       1590,          0,              20, 'carne'],
+            ['Pan de hamburguesa',       'unidad',               417,         60,              12, 'pan'],
+            ['Cheddar',                  'feta',                 169,        147,              50, 'cheddar'],
+            ['Panceta',                  'porción',              321,         10,              10, 'panceta'],
+            ['Papas',                    'porción 150g',         500,          1,               8, 'papas'],
+            ['Cebolla',                  'media unidad',         100,          6,               8, 'varios'],
+            ['Tomate',                   'porción',              100,          0,               4, 'varios'],
+            ['Lechuga',                  'porción',              100,          0,               4, 'varios'],
+            ['Verdeo',                   'porción',              200,          0,               2, 'varios'],
+            ['Huevo',                    'unidad',               150,          8,               6, 'varios'],
+            ['Bolsa delivery',           'unidad',                55,         50,              20, 'descartables'],
+            ['Cartón papas',             'unidad',                75,        100,              20, 'descartables'],
+            ['Aluminio',                 'unidad',               155,        160,              30, 'descartables'],
+            ['Aceite freidora',          'por venta',            222,          1,               3, 'varios'],
+            ['Garrafa',                  'por venta',            278,          0,               1, 'varios'],
+            ['Salsa',                    'por burger',           200,          0,               2, 'varios'],
+            ['Coca Cola',                'lata',                1200,          0,              12, 'varios'],
+            ['Sprite',                   'lata',                 600,          0,              12, 'varios'],
         ];
 
-        foreach ($insumos as [$nombre, $unidad, $costo, $stock_actual, $stock_minimo]) {
+        foreach ($insumos as [$nombre, $unidad, $costo, $stock_actual, $stock_minimo, $grupo]) {
             DB::table('insumos')->insert([
-                'nombre'         => $nombre,
-                'unidad'         => $unidad,
+                'nombre' => $nombre,
+                'unidad' => $unidad,
                 'costo_unitario' => $costo,
-                'stock_actual'   => $stock_actual,
-                'stock_minimo'   => $stock_minimo,
-                'activo'         => true,
-                'created_at'     => now(),
-                'updated_at'     => now(),
+                'stock_actual' => $stock_actual,
+                'stock_minimo' => $stock_minimo,
+                'grupo_separacion' => $grupo,
+                'activo' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
     }

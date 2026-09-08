@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 
 interface ApiOptions {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: Record<string, unknown>;
 }
 
@@ -18,10 +18,8 @@ export function useApi() {
                 method: options.method ?? 'GET',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-XSRF-TOKEN': decodeURIComponent(
-                        document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? ''
-                    ),
+                    Accept: 'application/json',
+                    'X-XSRF-TOKEN': decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? ''),
                 },
                 body: options.body ? JSON.stringify(options.body) : undefined,
             });
@@ -32,7 +30,7 @@ export function useApi() {
                 return null;
             }
 
-            return await res.json() as T;
+            return (await res.json()) as T;
         } catch (e) {
             error.value = 'Error de conexión';
             return null;
@@ -41,10 +39,11 @@ export function useApi() {
         }
     }
 
-    const get  = <T>(url: string) => request<T>(url);
+    const get = <T>(url: string) => request<T>(url);
     const post = <T>(url: string, body: Record<string, unknown>) => request<T>(url, { method: 'POST', body });
-    const put  = <T>(url: string, body: Record<string, unknown>) => request<T>(url, { method: 'PUT', body });
-    const del  = <T>(url: string) => request<T>(url, { method: 'DELETE' });
+    const put = <T>(url: string, body: Record<string, unknown>) => request<T>(url, { method: 'PUT', body });
+    const patch = <T>(url: string, body: Record<string, unknown>) => request<T>(url, { method: 'PATCH', body });
+    const del = <T>(url: string) => request<T>(url, { method: 'DELETE' });
 
-    return { loading, error, get, post, put, del };
+    return { loading, error, get, post, put, patch, del };
 }

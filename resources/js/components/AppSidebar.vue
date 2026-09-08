@@ -40,6 +40,7 @@ const mainNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
     { title: 'Admin', url: '/admin', icon: Settings },
+    { title: 'Separación', url: '/separacion', icon: PiggyBank },
     { title: 'Usuarios', url: '/usuarios', icon: Users },
 ];
 </script>

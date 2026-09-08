@@ -126,7 +126,7 @@ interface CajaDetalle {
 
 // ── Composable & estado ──────────────────────────────────────────────────────
 
-const { get, post, put, patch, del, loading } = useApi();
+const { get, post, put, patch, del, loading, error } = useApi();
 
 const data = ref<CajaData | null>(null);
 const ventasHoy = ref<Venta[]>([]);
@@ -249,8 +249,16 @@ async function cargar() {
 
 // ── Caja: abrir / cerrar ─────────────────────────────────────────────────────
 
+// Fecha operativa elegida al abrir. Por defecto, la de hoy.
+const fechaApertura = ref(new Date().toISOString().slice(0, 10));
+
 async function abrirCaja() {
-    await post('/api/caja/abrir', {});
+    const res = await post('/api/caja/abrir', {
+        fecha_operativa: fechaApertura.value || undefined,
+    });
+
+    if (!res) return;
+
     await cargar();
 }
 
@@ -531,13 +539,24 @@ onMounted(cargar);
                         </p>
                     </div>
 
-                    <div v-if="puedeOperarCaja" class="flex gap-2">
+                    <div v-if="puedeOperarCaja" class="flex gap-2 items-end flex-wrap">
+                        <div v-if="!data?.caja || data.caja.estado === 'cerrada'">
+                            <label class="text-xs text-muted-foreground">Fecha de la caja</label>
+                            <input
+                                type="date"
+                                v-model="fechaApertura"
+                                class="block mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                            />
+                        </div>
+
                         <Button
                             v-if="!data?.caja || data.caja.estado === 'cerrada'"
                             size="sm" @click="abrirCaja" :disabled="loading"
                         >
                             <Unlock class="w-4 h-4 mr-1" /> Abrir caja
                         </Button>
+
+                        <p v-if="error" class="text-xs text-destructive basis-full">{{ error }}</p>
 
                         <Button
                             v-if="data?.caja?.estado === 'abierta'"

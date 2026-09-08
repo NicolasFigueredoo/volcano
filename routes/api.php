@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\CajaController;
 use App\Http\Controllers\Api\ComboController;
 use App\Http\Controllers\Api\InventarioController;
 use App\Http\Controllers\Api\PosController;
+use App\Http\Controllers\Api\SeparacionController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -83,6 +84,12 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::get('gastos-fijos', [AdminController::class, 'gastosFijos']);
         Route::post('gastos-fijos', [AdminController::class, 'crearGastoFijo']);
         Route::put('gastos-fijos/{gasto}', [AdminController::class, 'actualizarGastoFijo']);
+    });
+
+    // ── Separación de insumos (solo admin) ────────────────────────
+    Route::middleware('es_admin')->prefix('separacion')->group(function () {
+        Route::get('/', [SeparacionController::class, 'index']);
+        Route::post('{grupo}/reponer', [SeparacionController::class, 'reponer']);
     });
 
     Route::middleware('es_admin')->prefix('usuarios')->group(function () {

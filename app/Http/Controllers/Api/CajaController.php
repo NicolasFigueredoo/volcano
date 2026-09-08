@@ -9,6 +9,7 @@ use App\Models\GastoFijo;
 use App\Models\Insumo;
 use App\Models\Variante;
 use App\Models\Venta;
+use App\Services\SeparacionService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,9 +21,10 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        $caja = Caja::whereDate('fecha_operativa', Caja::fechaOperativaActual())
-            ->with(['abiertaPor:id,name', 'cerradaPor:id,name'])
-            ->first();
+        $caja = Caja::abiertaActual()
+            ?? Caja::vigenteDeFecha(Caja::fechaOperativaActual());
+
+        $caja?->load(['abiertaPor:id,name', 'cerradaPor:id,name']);
 
         $ventas = $caja
             ? Venta::where('caja_id', $caja->id)
@@ -49,7 +51,7 @@ class CajaController extends Controller
     {
         $user = Auth::user();
         $caja = Caja::abiertaActual()
-            ?? Caja::whereDate('fecha_operativa', Caja::fechaOperativaActual())->first();
+            ?? Caja::vigenteDeFecha(Caja::fechaOperativaActual());
 
         $ventas = $caja
             ? Venta::where('caja_id', $caja->id)
@@ -76,7 +78,12 @@ class CajaController extends Controller
         ]);
     }
 
-    public function abrir(): JsonResponse
+    /**
+     * Abre una caja. Se puede elegir la fecha operativa (para cargar dias
+     * anteriores) y se puede abrir y cerrar varias cajas dentro del mismo dia:
+     * cada apertura genera una caja nueva.
+     */
+    public function abrir(Request $request): JsonResponse
     {
         $user = Auth::user();
 
@@ -86,27 +93,30 @@ class CajaController extends Controller
             ], 403);
         }
 
-        $fecha = Caja::fechaOperativaActual();
+        $data = $request->validate([
+            'fecha_operativa' => 'nullable|date',
+        ]);
 
-        $cajaExistente = Caja::whereDate('fecha_operativa', $fecha)->first();
+        $fecha = isset($data['fecha_operativa'])
+            ? Carbon::parse($data['fecha_operativa'])->toDateString()
+            : Caja::fechaOperativaActual();
 
-        if ($cajaExistente) {
-            if ($cajaExistente->estado === 'abierta') {
+        $abierta = Caja::abiertaActual();
+
+        if ($abierta) {
+            // Ya hay una caja abierta: si es la del mismo dia se devuelve tal
+            // cual, si es de otra fecha hay que cerrarla antes.
+            if (Carbon::parse($abierta->fecha_operativa)->toDateString() === $fecha) {
                 return response()->json(
-                    $cajaExistente->fresh(['abiertaPor:id,name', 'cerradaPor:id,name'])
+                    $abierta->fresh(['abiertaPor:id,name', 'cerradaPor:id,name'])
                 );
             }
 
-            // La caja de hoy ya fue cerrada: la reabrimos en vez de bloquear.
-            $cajaExistente->update([
-                'estado' => 'abierta',
-                'cerrada_por' => null,
-                'cerrada_at' => null,
-            ]);
-
-            return response()->json(
-                $cajaExistente->fresh(['abiertaPor:id,name', 'cerradaPor:id,name'])
-            );
+            return response()->json([
+                'message' => 'Ya hay una caja abierta del '
+                    .Carbon::parse($abierta->fecha_operativa)->format('d/m/Y')
+                    .'. Cerrala antes de abrir otra.',
+            ], 422);
         }
 
         $caja = Caja::create([
@@ -671,6 +681,9 @@ class CajaController extends Controller
                 $this->recalcularTotalesSolo($caja);
             }
         }
+
+        // Cambiaron los items: se recalcula lo que hay que apartar.
+        SeparacionService::sincronizar($venta);
 
         return response()->json($venta->fresh(['detalles', 'pagos', 'user:id,name']));
     }

@@ -25,11 +25,11 @@ class AdminController extends Controller
     public function crearProducto(Request $request): JsonResponse
     {
         $request->validate([
-            'nombre'       => 'required|string|max:100',
+            'nombre' => 'required|string|max:100',
             'categoria_id' => 'required|exists:categorias,id',
-            'descripcion'  => 'nullable|string',
-            'activo'       => 'boolean',
-            'orden'        => 'integer',
+            'descripcion' => 'nullable|string',
+            'activo' => 'boolean',
+            'orden' => 'integer',
         ]);
 
         $producto = Producto::create(
@@ -42,11 +42,11 @@ class AdminController extends Controller
     public function actualizarProducto(Request $request, Producto $producto): JsonResponse
     {
         $request->validate([
-            'nombre'       => 'sometimes|string|max:100',
+            'nombre' => 'sometimes|string|max:100',
             'categoria_id' => 'sometimes|exists:categorias,id',
-            'descripcion'  => 'nullable|string',
-            'activo'       => 'boolean',
-            'orden'        => 'integer',
+            'descripcion' => 'nullable|string',
+            'activo' => 'boolean',
+            'orden' => 'integer',
         ]);
 
         $producto->update(
@@ -68,10 +68,10 @@ class AdminController extends Controller
     public function crearVariante(Request $request, Producto $producto): JsonResponse
     {
         $request->validate([
-            'nombre'       => 'required|string|max:50',
+            'nombre' => 'required|string|max:50',
             'precio_venta' => 'required|numeric|min:0',
-            'activo'       => 'boolean',
-            'orden'        => 'integer',
+            'activo' => 'boolean',
+            'orden' => 'integer',
         ]);
 
         $variante = $producto->variantes()->create(
@@ -86,10 +86,10 @@ class AdminController extends Controller
     public function actualizarVariante(Request $request, Variante $variante): JsonResponse
     {
         $request->validate([
-            'nombre'       => 'sometimes|string|max:50',
+            'nombre' => 'sometimes|string|max:50',
             'precio_venta' => 'sometimes|numeric|min:0',
-            'activo'       => 'boolean',
-            'orden'        => 'integer',
+            'activo' => 'boolean',
+            'orden' => 'integer',
         ]);
 
         $variante->update(
@@ -111,11 +111,12 @@ class AdminController extends Controller
     public function crearInsumo(Request $request): JsonResponse
     {
         $request->validate([
-            'nombre'          => 'required|string|max:100',
-            'unidad'          => 'required|string|max:50',
-            'costo_unitario'  => 'required|numeric|min:0',
-            'stock_minimo'    => 'required|numeric|min:0',
+            'nombre' => 'required|string|max:100',
+            'unidad' => 'required|string|max:50',
+            'costo_unitario' => 'required|numeric|min:0',
+            'stock_minimo' => 'required|numeric|min:0',
             'descuenta_stock' => 'boolean',
+            'grupo_separacion' => 'nullable|in:carne,pan,papas,cheddar,panceta,descartables,varios',
         ]);
 
         $insumo = Insumo::create(
@@ -124,7 +125,8 @@ class AdminController extends Controller
                 'unidad',
                 'costo_unitario',
                 'stock_minimo',
-                'descuenta_stock'
+                'descuenta_stock',
+                'grupo_separacion'
             )
         );
 
@@ -134,12 +136,13 @@ class AdminController extends Controller
     public function actualizarInsumo(Request $request, Insumo $insumo): JsonResponse
     {
         $request->validate([
-            'nombre'          => 'sometimes|string|max:100',
-            'unidad'          => 'sometimes|string|max:50',
-            'costo_unitario'  => 'sometimes|numeric|min:0',
-            'stock_minimo'    => 'sometimes|numeric|min:0',
-            'activo'          => 'boolean',
+            'nombre' => 'sometimes|string|max:100',
+            'unidad' => 'sometimes|string|max:50',
+            'costo_unitario' => 'sometimes|numeric|min:0',
+            'stock_minimo' => 'sometimes|numeric|min:0',
+            'activo' => 'boolean',
             'descuenta_stock' => 'boolean',
+            'grupo_separacion' => 'nullable|in:carne,pan,papas,cheddar,panceta,descartables,varios',
         ]);
 
         $insumo->update(
@@ -149,7 +152,8 @@ class AdminController extends Controller
                 'costo_unitario',
                 'stock_minimo',
                 'activo',
-                'descuenta_stock'
+                'descuenta_stock',
+                'grupo_separacion'
             )
         );
 
@@ -179,7 +183,7 @@ class AdminController extends Controller
     {
         $request->validate([
             'nombre' => 'required|string|max:100',
-            'orden'  => 'integer',
+            'orden' => 'integer',
         ]);
 
         $categoria = Categoria::create(
@@ -201,8 +205,8 @@ class AdminController extends Controller
     public function crearGastoFijo(Request $request): JsonResponse
     {
         $request->validate([
-            'nombre'            => 'required|string|max:100',
-            'monto_mensual'     => 'required|numeric|min:0',
+            'nombre' => 'required|string|max:100',
+            'monto_mensual' => 'required|numeric|min:0',
             'dias_apertura_mes' => 'required|integer|min:1|max:31',
         ]);
 
@@ -216,10 +220,10 @@ class AdminController extends Controller
     public function actualizarGastoFijo(Request $request, GastoFijo $gasto): JsonResponse
     {
         $request->validate([
-            'nombre'            => 'sometimes|string|max:100',
-            'monto_mensual'     => 'sometimes|numeric|min:0',
+            'nombre' => 'sometimes|string|max:100',
+            'monto_mensual' => 'sometimes|numeric|min:0',
             'dias_apertura_mes' => 'sometimes|integer|min:1|max:31',
-            'activo'            => 'boolean',
+            'activo' => 'boolean',
         ]);
 
         $gasto->update(
@@ -240,28 +244,28 @@ class AdminController extends Controller
 
         return response()->json([
             'variante' => $variante,
-            'recetas'  => $variante->recetas->map(fn ($r) => [
-                'id'             => $r->id,
-                'insumo_id'      => $r->insumo_id,
-                'insumo_nombre'  => $r->insumo->nombre,
-                'insumo_unidad'  => $r->insumo->unidad,
+            'recetas' => $variante->recetas->map(fn ($r) => [
+                'id' => $r->id,
+                'insumo_id' => $r->insumo_id,
+                'insumo_nombre' => $r->insumo->nombre,
+                'insumo_unidad' => $r->insumo->unidad,
                 'costo_unitario' => $r->insumo->costo_unitario,
-                'cantidad'       => $r->cantidad,
-                'costo_linea'    => $r->cantidad * $r->insumo->costo_unitario,
+                'cantidad' => $r->cantidad,
+                'costo_linea' => $r->cantidad * $r->insumo->costo_unitario,
             ]),
-            'costo_total'  => $variante->costo_calculado,
+            'costo_total' => $variante->costo_calculado,
             'precio_venta' => $variante->precio_venta,
-            'ganancia'     => $variante->ganancia,
-            'margen'       => $variante->margen,
+            'ganancia' => $variante->ganancia,
+            'margen' => $variante->margen,
         ]);
     }
 
     public function guardarReceta(Request $request, Variante $variante): JsonResponse
     {
         $request->validate([
-            'recetas'             => 'required|array',
+            'recetas' => 'required|array',
             'recetas.*.insumo_id' => 'required|exists:insumos,id',
-            'recetas.*.cantidad'  => 'required|numeric|min:0.001',
+            'recetas.*.cantidad' => 'required|numeric|min:0.001',
         ]);
 
         $variante->recetas()->delete();
@@ -269,7 +273,7 @@ class AdminController extends Controller
         foreach ($request->recetas as $r) {
             $variante->recetas()->create([
                 'insumo_id' => $r['insumo_id'],
-                'cantidad'  => $r['cantidad'],
+                'cantidad' => $r['cantidad'],
             ]);
         }
 
@@ -279,7 +283,7 @@ class AdminController extends Controller
 
         return response()->json([
             'costo_calculado' => $variante->costo_calculado,
-            'margen'          => $variante->margen,
+            'margen' => $variante->margen,
         ]);
     }
 }

@@ -56,12 +56,23 @@ const fVariante = ref({
 
 const fVarianteProductoId = ref<number | null>(null);
 
+const GRUPOS_SEPARACION: [string, string][] = [
+    ['carne', 'Carne'],
+    ['pan', 'Pan'],
+    ['papas', 'Papas'],
+    ['cheddar', 'Cheddar'],
+    ['panceta', 'Panceta'],
+    ['descartables', 'Descartables'],
+    ['varios', 'Varios'],
+];
+
 const fInsumo = ref({
     nombre: '',
     unidad: '',
     costo_unitario: 0,
     stock_minimo: 0,
     descuenta_stock: true,
+    grupo_separacion: 'varios',
 });
 
 const fCategoria = ref({
@@ -162,6 +173,7 @@ function abrirPanel(tipo: string, data: any = null) {
             costo_unitario: Number(data?.costo_unitario ?? 0),
             stock_minimo: Number(data?.stock_minimo ?? 0),
             descuenta_stock: data?.descuenta_stock === true || data?.descuenta_stock === 1,
+            grupo_separacion: data?.grupo_separacion ?? 'varios',
         };
     } else if (tipo === 'categoria') {
         fCategoria.value = {
@@ -238,6 +250,7 @@ async function guardarInsumo() {
         costo_unitario: Number(fInsumo.value.costo_unitario ?? 0),
         stock_minimo: Number(fInsumo.value.stock_minimo ?? 0),
         descuenta_stock: Boolean(fInsumo.value.descuenta_stock),
+        grupo_separacion: fInsumo.value.grupo_separacion || 'varios',
     };
 
     if (editingId.value) {
@@ -605,6 +618,7 @@ const margenActual = computed(() => {
                                     <tr class="border-b text-xs text-muted-foreground">
                                         <th class="text-left p-3 font-medium">Nombre</th>
                                         <th class="text-left p-3 font-medium">Unidad</th>
+                                        <th class="text-left p-3 font-medium">Grupo</th>
                                         <th class="text-right p-3 font-medium">Costo unit.</th>
                                         <th class="text-right p-3 font-medium">Stock mín.</th>
                                         <th class="text-center p-3 font-medium">Descuenta stock</th>
@@ -624,6 +638,12 @@ const margenActual = computed(() => {
 
                                         <td class="p-3 text-muted-foreground">
                                             {{ ins.unidad }}
+                                        </td>
+
+                                        <td class="p-3">
+                                            <span class="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                                {{ (GRUPOS_SEPARACION.find(([v]) => v === (ins.grupo_separacion ?? 'varios')) ?? ['', 'Varios'])[1] }}
+                                            </span>
                                         </td>
 
                                         <td class="p-3 text-right">
@@ -976,6 +996,18 @@ const margenActual = computed(() => {
                                     min="0"
                                     class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
                                 />
+                            </div>
+
+                            <div>
+                                <label class="text-xs text-muted-foreground">Grupo de separación</label>
+                                <select
+                                    v-model="fInsumo.grupo_separacion"
+                                    class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                >
+                                    <option v-for="[valor, etiqueta] in GRUPOS_SEPARACION" :key="valor" :value="valor">
+                                        {{ etiqueta }}
+                                    </option>
+                                </select>
                             </div>
 
                             <label class="flex items-center gap-2 text-xs cursor-pointer">

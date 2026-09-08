@@ -14,14 +14,38 @@ class Insumo extends Model
         'stock_actual',
         'stock_minimo',
         'descuenta_stock',
+        'grupo_separacion',
         'activo',
     ];
 
+    /**
+     * Grupos con los que se agrupa la plata a apartar para reponer insumos.
+     */
+    const GRUPOS_SEPARACION = [
+        'carne',
+        'pan',
+        'papas',
+        'cheddar',
+        'panceta',
+        'descartables',
+        'varios',
+    ];
+
+    const GRUPOS_LABELS = [
+        'carne' => 'Carne',
+        'pan' => 'Pan',
+        'papas' => 'Papas',
+        'cheddar' => 'Cheddar',
+        'panceta' => 'Panceta',
+        'descartables' => 'Descartables',
+        'varios' => 'Varios',
+    ];
+
     protected $casts = [
-        'costo_unitario'  => 'decimal:2',
-        'stock_actual'    => 'decimal:3',
-        'stock_minimo'    => 'decimal:3',
-        'activo'          => 'boolean',
+        'costo_unitario' => 'decimal:2',
+        'stock_actual' => 'decimal:3',
+        'stock_minimo' => 'decimal:3',
+        'activo' => 'boolean',
         'descuenta_stock' => 'boolean',
     ];
 
@@ -54,12 +78,22 @@ class Insumo extends Model
         return $query->where('stock_actual', '<=', 0);
     }
 
+    public function scopeDeGrupo($query, string $grupo)
+    {
+        return $query->where('grupo_separacion', $grupo);
+    }
+
     // ── Accessors ────────────────────────────────────────────────────────────
 
     public function getEstadoStockAttribute(): string
     {
-        if ($this->stock_actual <= 0) return 'falta';
-        if ($this->stock_actual <= $this->stock_minimo) return 'poco';
+        if ($this->stock_actual <= 0) {
+            return 'falta';
+        }
+        if ($this->stock_actual <= $this->stock_minimo) {
+            return 'poco';
+        }
+
         return 'ok';
     }
 }

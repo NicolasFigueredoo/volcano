@@ -13,11 +13,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('es_admin')->group(function () {
         Route::get('/admin', fn () => Inertia::render('Admin'))->name('admin');
         Route::get('/usuarios', fn () => Inertia::render('Usuarios'))->name('usuarios');
+        Route::get('/separacion', fn () => Inertia::render('Separacion'))->name('separacion');
     });
 });
 
 Route::get('/qrburger', fn () => view('qr.burger'))->name('qrburger');
 Route::get('/qrhelados', fn () => view('qr.helados'))->name('qrhelados');
-
 
 require __DIR__.'/auth.php';

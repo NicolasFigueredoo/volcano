@@ -76,10 +76,28 @@ class Caja extends Model
         return $now->toDateString();
     }
 
-   public static function abiertaActual(): ?self
-{
-    return self::whereDate('fecha_operativa', self::fechaOperativaActual())
-        ->where('estado', 'abierta')
-        ->first();
-}
+    /**
+     * Caja donde se registran las ventas. Se puede abrir y cerrar varias veces
+     * el mismo dia, e incluso abrir una caja con fecha operativa pasada, asi
+     * que se prioriza la abierta de hoy y si no hay, cualquier otra abierta.
+     */
+    public static function abiertaActual(): ?self
+    {
+        return self::where('estado', 'abierta')
+            ->orderByRaw('case when fecha_operativa = ? then 0 else 1 end', [self::fechaOperativaActual()])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * Caja "vigente" de una fecha operativa: la abierta si existe, si no la
+     * ultima cerrada de ese dia.
+     */
+    public static function vigenteDeFecha(string $fecha): ?self
+    {
+        return self::whereDate('fecha_operativa', $fecha)
+            ->orderByRaw("case when estado = 'abierta' then 0 else 1 end")
+            ->orderByDesc('id')
+            ->first();
+    }
 }
