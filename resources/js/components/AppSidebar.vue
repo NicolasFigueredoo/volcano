@@ -15,6 +15,7 @@ import {
     ShoppingCart,
     ClipboardList,
     Package,
+    PiggyBank,
     Settings,
     Users,
 } from 'lucide-vue-next';
