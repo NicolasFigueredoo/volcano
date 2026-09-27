@@ -332,6 +332,44 @@ it('un proveedor de contado junta plata en el sobre para la próxima compra', fu
         ->and((float) $estado['falta_para_proxima'])->toEqual(31875.0);
 });
 
+it('las bebidas se separan en su propio rubro', function () {
+    $ctx = escenarioProveedor();
+
+    $coca = Insumo::create([
+        'nombre' => 'Coca Cola',
+        'unidad' => 'lata',
+        'costo_unitario' => 1200,
+        'stock_actual' => 24,
+        'stock_minimo' => 0,
+        'descuenta_stock' => true,
+        'grupo_separacion' => 'bebidas',
+    ]);
+
+    $lata = Variante::create([
+        'producto_id' => $ctx['doble']->producto_id,
+        'nombre' => 'Lata',
+        'precio_venta' => 2000,
+        'costo_calculado' => 0,
+        'activo' => true,
+    ]);
+    Receta::create(['variante_id' => $lata->id, 'insumo_id' => $coca->id, 'cantidad' => 1]);
+
+    $this->actingAs($ctx['cajero'])->postJson('/api/pos/venta', [
+        'items' => [['variante_id' => $lata->id, 'cantidad' => 2]],
+        'pagos' => [['metodo' => 'efectivo', 'monto' => 4000]],
+    ])->assertSuccessful();
+
+    $dia = $this->actingAs($ctx['admin'])->getJson("/api/separacion/dia?caja_id={$ctx['caja']->id}")->assertOk()->json();
+
+    expect((float) collect($dia['grupos'])->firstWhere('grupo', 'bebidas')['monto'])->toEqual(2400.0)
+        ->and((float) collect($dia['lineas'])->firstWhere('grupo', 'bebidas')['monto'])->toEqual(2400.0);
+
+    // Se puede elegir el rubro desde Admin.
+    $this->actingAs($ctx['admin'])
+        ->putJson("/api/admin/insumos/{$ctx['pan']->id}", ['grupo_separacion' => 'bebidas'])
+        ->assertOk();
+});
+
 it('el cajero no ve proveedores ni cajas viejas', function () {
     $ctx = escenarioProveedor();
 

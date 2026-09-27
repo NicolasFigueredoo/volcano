@@ -63,6 +63,7 @@ const GRUPOS_SEPARACION: [string, string][] = [
     ['cheddar', 'Cheddar'],
     ['panceta', 'Panceta'],
     ['descartables', 'Descartables'],
+    ['bebidas', 'Bebidas'],
     ['varios', 'Varios'],
 ];
 

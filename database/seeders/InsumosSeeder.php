@@ -27,8 +27,8 @@ class InsumosSeeder extends Seeder
             ['Aceite freidora',          'por venta',            222,          1,               3, 'varios'],
             ['Garrafa',                  'por venta',            278,          0,               1, 'varios'],
             ['Salsa',                    'por burger',           200,          0,               2, 'varios'],
-            ['Coca Cola',                'lata',                1200,          0,              12, 'varios'],
-            ['Sprite',                   'lata',                 600,          0,              12, 'varios'],
+            ['Coca Cola',                'lata',                1200,          0,              12, 'bebidas'],
+            ['Sprite',                   'lata',                 600,          0,              12, 'bebidas'],
         ];
 
         foreach ($insumos as [$nombre, $unidad, $costo, $stock_actual, $stock_minimo, $grupo]) {

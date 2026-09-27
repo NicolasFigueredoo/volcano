@@ -32,6 +32,7 @@ class Insumo extends Model
         'cheddar',
         'panceta',
         'descartables',
+        'bebidas',
         'varios',
     ];
 
@@ -42,6 +43,7 @@ class Insumo extends Model
         'cheddar' => 'Cheddar',
         'panceta' => 'Panceta',
         'descartables' => 'Descartables',
+        'bebidas' => 'Bebidas',
         'varios' => 'Varios',
     ];
 

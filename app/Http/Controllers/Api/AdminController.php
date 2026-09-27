@@ -10,6 +10,7 @@ use App\Models\Producto;
 use App\Models\Variante;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class AdminController extends Controller
 {
@@ -116,7 +117,7 @@ class AdminController extends Controller
             'costo_unitario' => 'required|numeric|min:0',
             'stock_minimo' => 'required|numeric|min:0',
             'descuenta_stock' => 'boolean',
-            'grupo_separacion' => 'nullable|in:carne,pan,papas,cheddar,panceta,descartables,varios',
+            'grupo_separacion' => ['nullable', Rule::in(Insumo::GRUPOS_SEPARACION)],
             'proveedor_id' => 'nullable|integer|exists:proveedores,id',
             'unidad_compra' => 'nullable|string|max:50',
             'equivalencia_compra' => 'nullable|numeric|gt:0',
@@ -148,7 +149,7 @@ class AdminController extends Controller
             'stock_minimo' => 'sometimes|numeric|min:0',
             'activo' => 'boolean',
             'descuenta_stock' => 'boolean',
-            'grupo_separacion' => 'nullable|in:carne,pan,papas,cheddar,panceta,descartables,varios',
+            'grupo_separacion' => ['nullable', Rule::in(Insumo::GRUPOS_SEPARACION)],
             'proveedor_id' => 'nullable|integer|exists:proveedores,id',
             'unidad_compra' => 'nullable|string|max:50',
             'equivalencia_compra' => 'nullable|numeric|gt:0',
