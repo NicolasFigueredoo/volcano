@@ -18,41 +18,10 @@ import { computed, onMounted, reactive, ref } from 'vue';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-interface UltimaReposicion {
-    id: number;
-    fecha: string | null;
-    monto_acumulado: number;
-    monto_real: number | null;
-    usuario: string | null;
-}
-
-interface Grupo {
-    grupo: string;
-    label: string;
-    monto_acumulado: number;
-    cantidad_ventas: number;
-    ultima_reposicion: UltimaReposicion | null;
-}
-
-interface HistorialItem {
-    id: number;
-    grupo: string;
-    label: string;
-    fecha: string | null;
-    monto_acumulado: number;
-    monto_real: number | null;
-    diferencia: number | null;
-    observacion: string | null;
-    usuario: string | null;
-}
-
 interface SeparacionData {
     fecha_corte: string;
     hoy: ResumenDia | null;
     proveedores: EstadoProveedor[];
-    grupos: Grupo[];
-    total_general: number;
-    historial: HistorialItem[];
 }
 
 interface InsumoAdmin {
@@ -73,13 +42,6 @@ const tab = ref<'separacion' | 'proveedores'>('separacion');
 
 const data = ref<SeparacionData | null>(null);
 
-// Rubro cuyo panel de reposición está abierto (sin Dialog/radix).
-const grupoActivo = ref<string | null>(null);
-const form = ref<{ monto_real: string; observacion: string }>({
-    monto_real: '',
-    observacion: '',
-});
-
 // Panel de movimiento abierto en una tarjeta de proveedor.
 const movimientoActivo = ref<{ proveedorId: number; tipo: MovimientoProveedor['tipo'] } | null>(null);
 const aviso = ref<string | null>(null);
@@ -95,18 +57,6 @@ function fecha(d: string | null) {
     return new Date(d.length === 10 ? d + 'T12:00' : d).toLocaleDateString('es-AR');
 }
 
-function fechaHora(d: string | null) {
-    if (!d) return '—';
-
-    return new Date(d).toLocaleString('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-}
-
 // ── Carga ────────────────────────────────────────────────────────────────────
 
 async function cargar() {
@@ -116,37 +66,6 @@ async function cargar() {
 }
 
 onMounted(cargar);
-
-// ── Reposición (rubros sin proveedor) ────────────────────────────────────────
-
-function abrirConfirmacion(grupo: Grupo) {
-    grupoActivo.value = grupo.grupo;
-    form.value = { monto_real: '', observacion: '' };
-}
-
-function cancelar() {
-    grupoActivo.value = null;
-    form.value = { monto_real: '', observacion: '' };
-}
-
-async function confirmarReposicion(grupo: Grupo) {
-    const body: Record<string, unknown> = {};
-
-    if (form.value.monto_real !== '') {
-        body.monto_real = Number(form.value.monto_real);
-    }
-
-    if (form.value.observacion.trim() !== '') {
-        body.observacion = form.value.observacion.trim();
-    }
-
-    const res = await post<SeparacionData>(`/api/separacion/${grupo.grupo}/reponer`, body);
-
-    if (res) {
-        data.value = res;
-        cancelar();
-    }
-}
 
 // ── Movimientos de proveedor ─────────────────────────────────────────────────
 
@@ -360,7 +279,9 @@ function nombreProveedor(id: number | null) {
                         </Button>
                     </CardHeader>
                     <CardContent>
-                        <p v-if="!data?.hoy || !data.hoy.grupos.length" class="text-sm text-muted-foreground">Todavía no hay insumos vendidos en esta caja.</p>
+                        <p v-if="!data?.hoy || !data.hoy.grupos.length" class="text-sm text-muted-foreground">
+                            Todavía no hay insumos vendidos en esta caja.
+                        </p>
 
                         <div v-else class="flex flex-col divide-y">
                             <div v-for="g in data.hoy.grupos" :key="g.grupo" class="flex items-start justify-between gap-3 py-2 text-sm">
@@ -405,10 +326,21 @@ function nombreProveedor(id: number | null) {
                                 <span class="text-muted-foreground">Separado</span>
                                 <span class="text-right tabular-nums">{{ fmt(p.separado) }}</span>
                                 <span class="font-medium">Falta separar</span>
-                                <span class="text-right font-semibold tabular-nums" :class="p.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'">
+                                <span
+                                    class="text-right font-semibold tabular-nums"
+                                    :class="p.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'"
+                                >
                                     {{ fmt(Math.max(0, p.falta_separar)) }}
                                 </span>
                             </div>
+
+                            <p
+                                v-if="!p.insumos.length"
+                                class="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400"
+                            >
+                                No tiene insumos asignados, así que sus ventas no se cuentan. Asignáselos en la pestaña Proveedores → "Insumos que
+                                provee" → Guardar insumos.
+                            </p>
 
                             <div class="text-xs leading-relaxed text-muted-foreground">
                                 <p>
@@ -453,126 +385,14 @@ function nombreProveedor(id: number | null) {
                     </Card>
                 </div>
 
-                <!-- Rubros sin proveedor -->
-                <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    <Card v-for="g in data?.grupos ?? []" :key="g.grupo">
-                        <CardHeader class="pb-2">
-                            <CardTitle class="text-sm font-medium">{{ g.label }}</CardTitle>
-                        </CardHeader>
-
-                        <CardContent class="flex flex-col gap-2">
-                            <p class="text-2xl font-semibold tabular-nums">{{ fmt(g.monto_acumulado) }}</p>
-
-                            <div class="text-xs leading-relaxed text-muted-foreground">
-                                <p>
-                                    Última reposición:
-                                    <span class="text-foreground">
-                                        {{ g.ultima_reposicion ? fecha(g.ultima_reposicion.fecha) : 'nunca' }}
-                                    </span>
-                                </p>
-                                <p>{{ g.cantidad_ventas }} venta{{ g.cantidad_ventas === 1 ? '' : 's' }} en el acumulado</p>
-                            </div>
-
-                            <!-- Panel de confirmación inline (sin Dialog/radix) -->
-                            <div v-if="grupoActivo === g.grupo" class="flex flex-col gap-2 rounded border bg-muted/40 p-3">
-                                <p class="text-xs">
-                                    Vas a marcar <strong>{{ g.label }}</strong> como repuesto por <strong>{{ fmt(g.monto_acumulado) }}</strong
-                                    >. El acumulado vuelve a cero y queda registrado en el historial.
-                                </p>
-
-                                <div>
-                                    <label class="text-xs text-muted-foreground">Monto real gastado (opcional)</label>
-                                    <input
-                                        v-model="form.monto_real"
-                                        type="number"
-                                        min="0"
-                                        step="1"
-                                        :placeholder="String(Math.round(g.monto_acumulado))"
-                                        class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label class="text-xs text-muted-foreground">Observación (opcional)</label>
-                                    <textarea
-                                        v-model="form.observacion"
-                                        rows="2"
-                                        class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
-                                    ></textarea>
-                                </div>
-
-                                <div class="flex gap-2">
-                                    <Button size="sm" :disabled="loading" @click="confirmarReposicion(g)">
-                                        <Check class="mr-1 h-4 w-4" /> Confirmar
-                                    </Button>
-                                    <Button variant="outline" size="sm" @click="cancelar"> <X class="mr-1 h-4 w-4" /> Cancelar </Button>
-                                </div>
-                            </div>
-
-                            <Button v-else variant="outline" size="sm" class="w-full" :disabled="loading" @click="abrirConfirmacion(g)">
-                                Repuse este insumo
-                            </Button>
-                        </CardContent>
-                    </Card>
-                </div>
-
-                <!-- Total rubros -->
-                <Card>
-                    <CardContent class="flex items-center justify-between p-4">
-                        <div>
-                            <p class="mb-1 text-xs text-muted-foreground">Total a separar en rubros sin proveedor</p>
-                            <p class="text-2xl font-semibold tabular-nums">{{ fmt(data?.total_general ?? 0) }}</p>
-                        </div>
-                        <p class="max-w-xs text-right text-xs text-muted-foreground">
-                            Suma de los {{ data?.grupos?.length ?? 0 }} rubros, desde la última reposición de cada uno.
+                <!-- Sin proveedores cargados -->
+                <Card v-if="data && !data.proveedores.length">
+                    <CardContent class="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+                        <p class="text-muted-foreground">
+                            Todavía no cargaste proveedores. Creá cada uno, asignale sus insumos y cargá el saldo inicial para ver cuánto le debés y
+                            cuánto separar.
                         </p>
-                    </CardContent>
-                </Card>
-
-                <!-- Historial -->
-                <Card>
-                    <CardHeader class="pb-2">
-                        <CardTitle class="text-sm font-medium">Historial de reposiciones</CardTitle>
-                    </CardHeader>
-
-                    <CardContent class="overflow-x-auto p-0">
-                        <table class="w-full text-sm">
-                            <thead>
-                                <tr class="border-b text-xs text-muted-foreground">
-                                    <th class="p-3 text-left font-medium">Grupo</th>
-                                    <th class="p-3 text-left font-medium">Fecha</th>
-                                    <th class="p-3 text-right font-medium">Acumulado</th>
-                                    <th class="p-3 text-right font-medium">Real</th>
-                                    <th class="p-3 text-right font-medium">Diferencia</th>
-                                    <th class="p-3 text-left font-medium">Observación</th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                <tr v-for="h in data?.historial ?? []" :key="h.id" class="border-b last:border-0 hover:bg-muted/50">
-                                    <td class="p-3">{{ h.label }}</td>
-                                    <td class="p-3 text-muted-foreground">{{ fechaHora(h.fecha) }}</td>
-                                    <td class="p-3 text-right tabular-nums">{{ fmt(h.monto_acumulado) }}</td>
-                                    <td class="p-3 text-right tabular-nums">
-                                        {{ h.monto_real === null ? '—' : fmt(h.monto_real) }}
-                                    </td>
-                                    <td
-                                        class="p-3 text-right tabular-nums"
-                                        :class="
-                                            h.diferencia === null ? 'text-muted-foreground' : h.diferencia > 0 ? 'text-destructive' : 'text-emerald-600'
-                                        "
-                                    >
-                                        <template v-if="h.diferencia === null">—</template>
-                                        <template v-else>{{ h.diferencia > 0 ? '+' : '-' }}{{ fmt(Math.abs(h.diferencia)) }}</template>
-                                    </td>
-                                    <td class="p-3 text-xs text-muted-foreground">{{ h.observacion ?? '—' }}</td>
-                                </tr>
-
-                                <tr v-if="!(data?.historial ?? []).length">
-                                    <td colspan="6" class="p-6 text-center text-sm text-muted-foreground">Todavía no registraste ninguna reposición.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <Button size="sm" @click="abrirTabProveedores"><Plus class="mr-1 h-4 w-4" /> Cargar proveedores</Button>
                     </CardContent>
                 </Card>
             </template>
@@ -594,7 +414,7 @@ function nombreProveedor(id: number | null) {
                             @click="seleccionarProveedor(p.id)"
                         >
                             <span :class="{ 'text-muted-foreground line-through': !p.activo }">{{ p.nombre }}</span>
-                            <span class="tabular-nums text-xs">{{ fmt(p.deuda) }}</span>
+                            <span class="text-xs tabular-nums">{{ fmt(p.deuda) }}</span>
                         </button>
                         <p v-if="!proveedores.length" class="p-2 text-sm text-muted-foreground">Todavía no cargaste proveedores.</p>
                     </CardContent>
@@ -609,11 +429,17 @@ function nombreProveedor(id: number | null) {
                         <CardContent class="grid gap-2 sm:grid-cols-2">
                             <div>
                                 <label class="text-xs text-muted-foreground">Nombre</label>
-                                <input v-model="formProveedor.nombre" class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm" />
+                                <input
+                                    v-model="formProveedor.nombre"
+                                    class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
+                                />
                             </div>
                             <div>
                                 <label class="text-xs text-muted-foreground">Teléfono</label>
-                                <input v-model="formProveedor.telefono" class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm" />
+                                <input
+                                    v-model="formProveedor.telefono"
+                                    class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
+                                />
                             </div>
                             <div class="sm:col-span-2">
                                 <label class="text-xs text-muted-foreground">Notas</label>
@@ -665,7 +491,10 @@ function nombreProveedor(id: number | null) {
                                     </div>
                                     <div>
                                         <p class="text-xs text-muted-foreground">Falta separar</p>
-                                        <p class="font-semibold tabular-nums" :class="proveedorSel.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'">
+                                        <p
+                                            class="font-semibold tabular-nums"
+                                            :class="proveedorSel.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'"
+                                        >
                                             {{ fmt(Math.max(0, proveedorSel.falta_separar)) }}
                                         </p>
                                     </div>
@@ -725,7 +554,9 @@ function nombreProveedor(id: number | null) {
                                             v-for="i in insumos.filter((x) => x.activo)"
                                             :key="i.id"
                                             class="border-b last:border-0"
-                                            :class="{ 'opacity-50': i.proveedor_id && i.proveedor_id !== proveedorSel.id && !asignacion[i.id]?.incluido }"
+                                            :class="{
+                                                'opacity-50': i.proveedor_id && i.proveedor_id !== proveedorSel.id && !asignacion[i.id]?.incluido,
+                                            }"
                                         >
                                             <td class="p-2"><input v-model="asignacion[i.id].incluido" type="checkbox" class="h-4 w-4" /></td>
                                             <td class="p-2">
@@ -762,7 +593,9 @@ function nombreProveedor(id: number | null) {
                                     </tbody>
                                 </table>
                                 <div class="flex justify-end p-3">
-                                    <Button size="sm" :disabled="loading" @click="guardarAsignacion"><Check class="mr-1 h-4 w-4" /> Guardar insumos</Button>
+                                    <Button size="sm" :disabled="loading" @click="guardarAsignacion"
+                                        ><Check class="mr-1 h-4 w-4" /> Guardar insumos</Button
+                                    >
                                 </div>
                             </CardContent>
                         </Card>
@@ -772,7 +605,11 @@ function nombreProveedor(id: number | null) {
                             <CardHeader class="flex flex-row flex-wrap items-end justify-between gap-2 pb-2">
                                 <CardTitle class="text-sm font-medium">Movimientos</CardTitle>
                                 <div class="flex flex-wrap items-end gap-2 text-sm">
-                                    <select v-model="filtros.tipo" class="rounded border border-input bg-background px-2 py-1" @change="cargarMovimientos">
+                                    <select
+                                        v-model="filtros.tipo"
+                                        class="rounded border border-input bg-background px-2 py-1"
+                                        @change="cargarMovimientos"
+                                    >
                                         <option value="">Todos</option>
                                         <option v-for="(label, t) in TIPO_LABELS" :key="t" :value="t">{{ label }}</option>
                                     </select>
@@ -837,12 +674,7 @@ function nombreProveedor(id: number | null) {
             </div>
 
             <!-- Modal: separar insumos de la caja de hoy -->
-            <SepararInsumos
-                v-if="separandoCaja"
-                :caja-id="separandoCaja"
-                @close="separandoCaja = null"
-                @confirmada="cargar"
-            />
+            <SepararInsumos v-if="separandoCaja" :caja-id="separandoCaja" @close="separandoCaja = null" @confirmada="cargar" />
         </div>
     </AppLayout>
 </template>
