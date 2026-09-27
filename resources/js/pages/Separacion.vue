@@ -93,7 +93,14 @@ const insumos = ref<InsumoAdmin[]>([]);
 const proveedorSelId = ref<number | null>(null);
 const proveedorSel = computed(() => proveedores.value.find((p) => p.id === proveedorSelId.value) ?? null);
 
-const formProveedor = reactive({ id: null as number | null, nombre: '', telefono: '', notas: '', activo: true });
+const formProveedor = reactive({
+    id: null as number | null,
+    nombre: '',
+    modalidad: 'cuenta_corriente' as EstadoProveedor['modalidad'],
+    telefono: '',
+    notas: '',
+    activo: true,
+});
 const editandoProveedor = ref(false);
 
 // Asignación de insumos del proveedor seleccionado.
@@ -168,18 +175,26 @@ async function cargarMovimientos() {
 }
 
 function nuevoProveedor() {
-    Object.assign(formProveedor, { id: null, nombre: '', telefono: '', notas: '', activo: true });
+    Object.assign(formProveedor, { id: null, nombre: '', modalidad: 'cuenta_corriente', telefono: '', notas: '', activo: true });
     editandoProveedor.value = true;
 }
 
 function editarProveedor(p: EstadoProveedor) {
-    Object.assign(formProveedor, { id: p.id, nombre: p.nombre, telefono: p.telefono ?? '', notas: p.notas ?? '', activo: p.activo });
+    Object.assign(formProveedor, {
+        id: p.id,
+        nombre: p.nombre,
+        modalidad: p.modalidad,
+        telefono: p.telefono ?? '',
+        notas: p.notas ?? '',
+        activo: p.activo,
+    });
     editandoProveedor.value = true;
 }
 
 async function guardarProveedor() {
     const body = {
         nombre: formProveedor.nombre.trim(),
+        modalidad: formProveedor.modalidad,
         telefono: formProveedor.telefono.trim() || null,
         notas: formProveedor.notas.trim() || null,
         activo: formProveedor.activo,
@@ -313,26 +328,63 @@ function nombreProveedor(id: number | null) {
                         </CardHeader>
 
                         <CardContent class="flex flex-col gap-2">
-                            <div>
-                                <p class="text-xs text-muted-foreground">Deuda total</p>
-                                <p class="text-2xl font-semibold tabular-nums">{{ fmt(p.deuda) }}</p>
-                            </div>
+                            <!-- De contado: se junta plata en un sobre para la próxima compra -->
+                            <template v-if="p.modalidad === 'contado'">
+                                <div>
+                                    <p class="text-xs text-muted-foreground">Falta apartar</p>
+                                    <p
+                                        class="text-2xl font-semibold tabular-nums"
+                                        :class="p.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'"
+                                    >
+                                        {{ fmt(Math.max(0, p.falta_separar)) }}
+                                    </p>
+                                </div>
 
-                            <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-                                <span class="text-muted-foreground">Vendido sin pagar</span>
-                                <span class="text-right tabular-nums">{{ fmt(p.vendido_sin_pagar) }}</span>
-                                <span class="text-muted-foreground">En stock sin pagar</span>
-                                <span class="text-right tabular-nums">{{ fmt(p.en_stock_sin_pagar) }}</span>
-                                <span class="text-muted-foreground">Separado</span>
-                                <span class="text-right tabular-nums">{{ fmt(p.separado) }}</span>
-                                <span class="font-medium">Falta separar</span>
-                                <span
-                                    class="text-right font-semibold tabular-nums"
-                                    :class="p.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'"
-                                >
-                                    {{ fmt(Math.max(0, p.falta_separar)) }}
-                                </span>
-                            </div>
+                                <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                                    <span class="text-muted-foreground">En el sobre</span>
+                                    <span class="text-right tabular-nums">{{ fmt(p.separado) }}</span>
+                                    <template v-if="p.proxima_compra > 0">
+                                        <span class="text-muted-foreground">Próxima compra</span>
+                                        <span class="text-right tabular-nums">{{ fmt(p.proxima_compra) }}</span>
+                                        <span class="font-medium">Te falta juntar</span>
+                                        <span class="text-right font-semibold tabular-nums">{{ fmt(p.falta_para_proxima) }}</span>
+                                    </template>
+                                </div>
+
+                                <p v-if="p.ultimas_compras.length" class="text-xs text-muted-foreground">
+                                    Última compra:
+                                    <template v-for="(c, j) in p.ultimas_compras" :key="c.insumo_id">
+                                        {{ j > 0 ? ' · ' : '' }}{{ c.nombre }} {{ Number(c.cantidad).toLocaleString('es-AR') }} {{ c.unidad }} a
+                                        {{ fmt(c.monto) }}
+                                    </template>
+                                </p>
+                                <p v-else class="text-xs text-muted-foreground">
+                                    Cargá tu última compra con "Registrar compra" para saber cuánto juntar para la próxima.
+                                </p>
+                            </template>
+
+                            <template v-else>
+                                <div>
+                                    <p class="text-xs text-muted-foreground">Deuda total</p>
+                                    <p class="text-2xl font-semibold tabular-nums">{{ fmt(p.deuda) }}</p>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                                    <span class="text-muted-foreground">Vendido sin pagar</span>
+                                    <span class="text-right tabular-nums">{{ fmt(p.vendido_sin_pagar) }}</span>
+                                    <span class="text-muted-foreground">En stock sin pagar</span>
+                                    <span class="text-right tabular-nums">{{ fmt(p.en_stock_sin_pagar) }}</span>
+                                    <span class="text-muted-foreground">Separado</span>
+                                    <span class="text-right tabular-nums">{{ fmt(p.separado) }}</span>
+                                    <span class="font-medium">Falta separar</span>
+                                    <span
+                                        class="text-right font-semibold tabular-nums"
+                                        :class="p.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'"
+                                    >
+                                        {{ fmt(Math.max(0, p.falta_separar)) }}
+                                    </span>
+                                </div>
+                            </template>
 
                             <p
                                 v-if="!p.insumos.length"
@@ -355,7 +407,8 @@ function nombreProveedor(id: number | null) {
                                     </span>
                                 </p>
                                 <p>
-                                    Desde el último pago{{ p.ultimo_pago ? ` (${fecha(p.ultimo_pago.fecha)})` : '' }}:
+                                    {{ p.modalidad === 'contado' ? 'Desde la última compra' : 'Desde el último pago'
+                                    }}{{ p.ultimo_pago ? ` (${fecha(p.ultimo_pago.fecha)})` : '' }}:
                                     <span class="text-foreground">
                                         <template v-if="p.unidades_desde_ultimo_pago.length">
                                             <template v-for="(u, j) in p.unidades_desde_ultimo_pago" :key="u.insumo_id">
@@ -375,6 +428,12 @@ function nombreProveedor(id: number | null) {
                                 @cancelar="movimientoActivo = null"
                             />
 
+                            <div v-else-if="p.modalidad === 'contado'" class="flex gap-2">
+                                <Button size="sm" class="flex-1" :disabled="loading" @click="abrirMovimiento(p, 'separacion')">Aparté plata</Button>
+                                <Button variant="outline" size="sm" class="flex-1" :disabled="loading" @click="abrirMovimiento(p, 'entrega')">
+                                    Registrar compra
+                                </Button>
+                            </div>
                             <div v-else class="flex gap-2">
                                 <Button size="sm" class="flex-1" :disabled="loading" @click="abrirMovimiento(p, 'pago')">Registrar pago</Button>
                                 <Button variant="outline" size="sm" class="flex-1" :disabled="loading" @click="abrirMovimiento(p, 'entrega')">
@@ -449,6 +508,20 @@ function nombreProveedor(id: number | null) {
                                     class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
                                 ></textarea>
                             </div>
+                            <div class="sm:col-span-2">
+                                <label class="text-xs text-muted-foreground">¿Cómo le pagás?</label>
+                                <select
+                                    v-model="formProveedor.modalidad"
+                                    class="mt-1 w-full rounded border border-input bg-background px-2 py-1.5 text-sm"
+                                >
+                                    <option value="cuenta_corriente">
+                                        Fiado: me deja la mercadería y le pago a medida que vendo (ej: carnicero)
+                                    </option>
+                                    <option value="contado">
+                                        Al comprar: pago en el momento y junto plata para la próxima (ej: pan, descartables)
+                                    </option>
+                                </select>
+                            </div>
                             <label class="flex items-center gap-2 text-sm">
                                 <input v-model="formProveedor.activo" type="checkbox" class="h-4 w-4" /> Activo
                             </label>
@@ -472,7 +545,30 @@ function nombreProveedor(id: number | null) {
                                 <Button variant="outline" size="sm" @click="editarProveedor(proveedorSel)">Editar</Button>
                             </CardHeader>
                             <CardContent class="flex flex-col gap-3">
-                                <div class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-5">
+                                <div v-if="proveedorSel.modalidad === 'contado'" class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+                                    <div>
+                                        <p class="text-xs text-muted-foreground">Falta apartar</p>
+                                        <p
+                                            class="font-semibold tabular-nums"
+                                            :class="proveedorSel.falta_separar > 0 ? 'text-destructive' : 'text-emerald-600'"
+                                        >
+                                            {{ fmt(Math.max(0, proveedorSel.falta_separar)) }}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-muted-foreground">En el sobre</p>
+                                        <p class="font-semibold tabular-nums">{{ fmt(proveedorSel.separado) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-muted-foreground">Próxima compra</p>
+                                        <p class="font-semibold tabular-nums">{{ fmt(proveedorSel.proxima_compra) }}</p>
+                                    </div>
+                                    <div>
+                                        <p class="text-xs text-muted-foreground">Te falta juntar</p>
+                                        <p class="font-semibold tabular-nums">{{ fmt(proveedorSel.falta_para_proxima) }}</p>
+                                    </div>
+                                </div>
+                                <div v-else class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-5">
                                     <div>
                                         <p class="text-xs text-muted-foreground">Deuda</p>
                                         <p class="font-semibold tabular-nums">{{ fmt(proveedorSel.deuda) }}</p>
@@ -535,7 +631,8 @@ function nombreProveedor(id: number | null) {
                             <CardHeader class="pb-2">
                                 <CardTitle class="text-sm font-medium">Insumos que provee</CardTitle>
                                 <p class="text-xs text-muted-foreground">
-                                    Unidad de compra y equivalencia: por ejemplo "kg" = 10 medallones. Se usa para cargar entregas y mostrar kilos.
+                                    Unidad en la que comprás y cuántas unidades del insumo trae. Ej: carne "kg" = 10 medallones, pan "caja" = 48.
+                                    Sirve para cargar entregas en esa unidad.
                                 </p>
                             </CardHeader>
                             <CardContent class="overflow-x-auto p-0">
@@ -573,7 +670,7 @@ function nombreProveedor(id: number | null) {
                                                 <input
                                                     v-model="asignacion[i.id].unidad_compra"
                                                     :disabled="!asignacion[i.id].incluido"
-                                                    placeholder="kg"
+                                                    placeholder="ej: caja"
                                                     class="w-20 rounded border border-input bg-background px-2 py-1 text-sm disabled:opacity-50"
                                                 />
                                             </td>
@@ -584,7 +681,7 @@ function nombreProveedor(id: number | null) {
                                                     type="number"
                                                     min="0"
                                                     step="0.001"
-                                                    placeholder="10"
+                                                    placeholder="ej: 48"
                                                     class="w-20 rounded border border-input bg-background px-2 py-1 text-sm disabled:opacity-50"
                                                 />
                                                 <span class="text-xs text-muted-foreground"> {{ i.unidad }}</span>

@@ -56,9 +56,22 @@ export interface InsumoProveedor {
     equivalencia_compra: number | null;
 }
 
+export interface UltimaCompra {
+    insumo_id: number;
+    nombre: string | null;
+    cantidad: number;
+    unidad: string | null;
+    monto: number;
+    fecha: string | null;
+}
+
 export interface EstadoProveedor {
     id: number;
     nombre: string;
+    modalidad: 'cuenta_corriente' | 'contado';
+    ultimas_compras: UltimaCompra[];
+    proxima_compra: number;
+    falta_para_proxima: number;
     telefono: string | null;
     notas: string | null;
     activo: boolean;

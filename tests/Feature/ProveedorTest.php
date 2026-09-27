@@ -291,6 +291,47 @@ it('avisa cuando la caja es anterior a la fecha de corte', function () {
         ->and((float) estadoCarnicero($ctx)['vendido_sin_pagar'])->toEqual(0.0);
 });
 
+it('un proveedor de contado junta plata en el sobre para la próxima compra', function () {
+    $ctx = escenarioProveedor();
+
+    $panaderia = Proveedor::create(['nombre' => 'Panadería', 'modalidad' => 'contado']);
+    $ctx['pan']->update(['proveedor_id' => $panaderia->id, 'unidad_compra' => 'caja', 'equivalencia_compra' => 48]);
+    $url = "/api/proveedores/{$panaderia->id}/movimientos";
+
+    // Compra de una caja de 48 panes a $34.000, pagada en el momento.
+    $res = $this->actingAs($ctx['admin'])->postJson($url, [
+        'tipo' => 'entrega',
+        'monto' => 34000,
+        'insumo_id' => $ctx['pan']->id,
+        'cantidad' => 1,
+        'unidad' => 'caja',
+        'actualizar_costo' => true,
+        'pagado' => true,
+    ])->assertCreated()->json();
+
+    expect((float) $res['costo_nuevo'])->toEqual(708.33)
+        ->and((float) $res['proveedor']['deuda'])->toEqual(0.0)
+        ->and((float) $res['proveedor']['separado'])->toEqual(0.0)
+        ->and((float) $res['proveedor']['proxima_compra'])->toEqual(34000.0)
+        ->and((float) $ctx['pan']->fresh()->stock_actual)->toEqual(148.0);
+
+    // Se venden 3 dobles (3 panes): hay que apartar 3 × 708,33.
+    venderDoble($ctx, 3);
+
+    $estado = collect($this->actingAs($ctx['admin'])->getJson('/api/proveedores')->json())->firstWhere('id', $panaderia->id);
+
+    expect((float) $estado['falta_separar'])->toEqual(2124.99);
+
+    // Aparta $2.125: el sobre sube y ya no falta nada.
+    $this->actingAs($ctx['admin'])->postJson($url, ['tipo' => 'separacion', 'monto' => 2125])->assertCreated();
+
+    $estado = collect($this->actingAs($ctx['admin'])->getJson('/api/proveedores')->json())->firstWhere('id', $panaderia->id);
+
+    expect((float) $estado['separado'])->toEqual(2125.0)
+        ->and((float) $estado['falta_separar'])->toEqual(0.0)
+        ->and((float) $estado['falta_para_proxima'])->toEqual(31875.0);
+});
+
 it('el cajero no ve proveedores ni cajas viejas', function () {
     $ctx = escenarioProveedor();
 

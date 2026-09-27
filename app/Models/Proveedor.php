@@ -9,8 +9,11 @@ class Proveedor extends Model
 {
     protected $table = 'proveedores';
 
+    const MODALIDADES = ['cuenta_corriente', 'contado'];
+
     protected $fillable = [
         'nombre',
+        'modalidad',
         'telefono',
         'notas',
         'activo',

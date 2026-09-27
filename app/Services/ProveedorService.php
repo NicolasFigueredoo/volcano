@@ -49,7 +49,17 @@ class ProveedorService
 
         $vendidoInicial = (float) ($sumas->get('saldo_inicial')->vendido ?? 0);
         $vendidoSinPagar = max(0, $consumo + $vendidoInicial - $pagos);
-        $separado = $suma('separacion') - $pagos;
+        $contado = $proveedor->modalidad === 'contado';
+        $separado = $contado ? self::saldoSobre($proveedor) : $suma('separacion') - $pagos;
+
+        // De contado no hay deuda: lo que se vendió hay que apartarlo para la
+        // próxima compra, y cada compra se paga con lo apartado ("el sobre").
+        $faltaSeparar = $contado
+            ? max(0, $consumo + $vendidoInicial - $suma('separacion'))
+            : $vendidoSinPagar - $separado;
+
+        $ultimasCompras = self::ultimasCompras($proveedor);
+        $proximaCompra = round(array_sum(array_column($ultimasCompras, 'monto')), 2);
 
         $ultimoPago = $proveedor->movimientos()
             ->where('tipo', 'pago')
@@ -60,12 +70,13 @@ class ProveedorService
         $desdeUltimoPago = VentaInsumo::desdeCorte()->whereIn('venta_insumos.insumo_id', $insumoIds);
 
         if ($ultimoPago) {
-            $desdeUltimoPago->where('venta_insumos.created_at', '>', $ultimoPago->created_at);
+            $desdeUltimoPago->where('venta_insumos.created_at', '>=', $ultimoPago->created_at);
         }
 
         return [
             'id' => $proveedor->id,
             'nombre' => $proveedor->nombre,
+            'modalidad' => $proveedor->modalidad ?? 'cuenta_corriente',
             'telefono' => $proveedor->telefono,
             'notas' => $proveedor->notas,
             'activo' => $proveedor->activo,
@@ -76,8 +87,13 @@ class ProveedorService
             'vendido_sin_pagar' => round($vendidoSinPagar, 2),
             'en_stock_sin_pagar' => round($deuda - $vendidoSinPagar, 2),
             'separado' => round($separado, 2),
-            'falta_separar' => round($vendidoSinPagar - $separado, 2),
+            'falta_separar' => round($faltaSeparar, 2),
             'consumo_desde_corte' => round($consumo, 2),
+            'ultimas_compras' => $ultimasCompras,
+            // Lo que cuesta volver a comprar lo mismo que la última vez, y
+            // cuánto falta juntar contando lo que ya está en el sobre.
+            'proxima_compra' => $proximaCompra,
+            'falta_para_proxima' => round(max(0, $proximaCompra - $separado), 2),
             'ultimo_pago' => $ultimoPago ? [
                 'fecha' => $ultimoPago->created_at?->toIso8601String(),
                 'monto' => (float) $ultimoPago->monto,
@@ -89,6 +105,53 @@ class ProveedorService
                 : [],
             'unidades_desde_ultimo_pago' => SeparacionService::unidadesPorInsumo($desdeUltimoPago),
         ];
+    }
+
+    /**
+     * Plata que hay en el sobre de un proveedor de contado: cada separación
+     * suma y cada pago se saca del sobre. Si una compra cuesta más de lo que
+     * había, el resto salió de otro lado y el sobre queda en cero (no en
+     * negativo), así lo que se aparte después se ve desde cero.
+     */
+    private static function saldoSobre(Proveedor $proveedor): float
+    {
+        return $proveedor->movimientos()
+            ->whereIn('tipo', ['separacion', 'pago'])
+            ->orderBy('id')
+            ->get(['tipo', 'monto'])
+            ->reduce(
+                fn (float $sobre, ProveedorMovimiento $m) => $m->tipo === 'separacion'
+                    ? $sobre + (float) $m->monto
+                    : max(0, $sobre - (float) $m->monto),
+                0.0
+            );
+    }
+
+    /**
+     * Última entrega de cada insumo del proveedor (qué se compró y a cuánto).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private static function ultimasCompras(Proveedor $proveedor): array
+    {
+        return $proveedor->movimientos()
+            ->with('insumo:id,nombre,unidad')
+            ->where('tipo', 'entrega')
+            ->whereNotNull('insumo_id')
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('insumo_id')
+            ->map(fn (ProveedorMovimiento $m) => [
+                'insumo_id' => $m->insumo_id,
+                'nombre' => $m->insumo?->nombre,
+                'cantidad' => (float) $m->cantidad,
+                'unidad' => $m->unidad,
+                'monto' => (float) $m->monto,
+                'fecha' => $m->fecha?->toDateString(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -176,6 +239,19 @@ class ProveedorService
                 'user_id' => $userId,
                 'observacion' => $data['observacion'] ?? null,
             ]);
+
+            // Compra pagada en el momento (proveedores de contado): la entrega
+            // y su pago quedan juntos, así la deuda no se mueve.
+            if ($data['tipo'] === 'entrega' && ! empty($data['pagado'])) {
+                ProveedorMovimiento::create([
+                    'proveedor_id' => $proveedor->id,
+                    'tipo' => 'pago',
+                    'fecha' => $movimiento->fecha,
+                    'monto' => $data['monto'],
+                    'user_id' => $userId,
+                    'observacion' => 'Pago de la compra'.($insumo ? ' de '.$insumo->nombre : ''),
+                ]);
+            }
 
             return [
                 'movimiento' => $movimiento,

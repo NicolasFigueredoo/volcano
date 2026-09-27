@@ -27,6 +27,7 @@ class ProveedorController extends Controller
     {
         $data = $request->validate([
             'nombre' => 'required|string|max:100',
+            'modalidad' => ['sometimes', Rule::in(Proveedor::MODALIDADES)],
             'telefono' => 'nullable|string|max:50',
             'notas' => 'nullable|string|max:500',
             'activo' => 'boolean',
@@ -41,6 +42,7 @@ class ProveedorController extends Controller
     {
         $data = $request->validate([
             'nombre' => 'sometimes|string|max:100',
+            'modalidad' => ['sometimes', Rule::in(Proveedor::MODALIDADES)],
             'telefono' => 'nullable|string|max:50',
             'notas' => 'nullable|string|max:500',
             'activo' => 'boolean',
@@ -125,6 +127,7 @@ class ProveedorController extends Controller
             'cantidad' => 'nullable|required_with:insumo_id|numeric|gt:0',
             'unidad' => 'nullable|string|max:50',
             'actualizar_costo' => 'boolean',
+            'pagado' => 'boolean',
             'caja_id' => 'nullable|integer|exists:cajas,id',
             'observacion' => ($tipo === 'ajuste' ? 'required' : 'nullable').'|string|max:500',
         ]);

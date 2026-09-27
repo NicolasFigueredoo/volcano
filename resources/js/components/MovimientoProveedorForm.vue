@@ -42,8 +42,12 @@ const form = reactive({
     cantidad: '' as number | '',
     unidad: '',
     actualizar_costo: true,
+    // De contado la compra se paga en el momento: entrega + pago juntos.
+    pagado: props.proveedor.modalidad === 'contado',
     observacion: '',
 });
+
+const contado = computed(() => props.proveedor.modalidad === 'contado');
 
 watch(
     () => props.tipo,
@@ -78,9 +82,11 @@ const costoEntrega = computed(() => (cantidadInsumo.value > 0 ? (Number(form.mon
 const ayuda = computed(
     () =>
         ({
-            entrega: 'Suma a la deuda y al stock.',
-            pago: 'Resta de la deuda y de lo separado.',
-            separacion: 'Plata apartada para este proveedor.',
+            entrega: contado.value
+                ? 'Compra: suma al stock. Si la pagaste en el momento, sale del sobre y no queda deuda.'
+                : 'Suma a la deuda y al stock.',
+            pago: contado.value ? 'Plata que sacaste del sobre para pagarle.' : 'Resta de la deuda y de lo separado.',
+            separacion: contado.value ? 'Plata que ponés en el sobre para la próxima compra.' : 'Plata apartada para este proveedor.',
             saldo_inicial: 'Deuda con la que arrancás en el corte.',
             ajuste: 'Corrige la deuda: positivo la sube, negativo la baja.',
         })[form.tipo],
@@ -105,6 +111,10 @@ async function guardar() {
         body.actualizar_costo = form.actualizar_costo;
     }
 
+    if (form.tipo === 'entrega') {
+        body.pagado = form.pagado;
+    }
+
     const res = await post<ResultadoMovimiento>(`/api/proveedores/${props.proveedor.id}/movimientos`, body);
 
     if (res) emit('guardado', res);
@@ -126,7 +136,9 @@ const inputClass = 'mt-1 w-full rounded border border-input bg-background px-2 p
                 {{ t.label }}
             </button>
         </div>
-        <p v-else class="text-sm font-medium">{{ TIPOS.find((t) => t.value === form.tipo)?.label }} · {{ proveedor.nombre }}</p>
+        <p v-else class="text-sm font-medium">
+            {{ contado && form.tipo === 'entrega' ? 'Compra' : TIPOS.find((t) => t.value === form.tipo)?.label }} · {{ proveedor.nombre }}
+        </p>
 
         <p class="text-xs text-muted-foreground">{{ ayuda }}</p>
 
@@ -186,6 +198,11 @@ const inputClass = 'mt-1 w-full rounded border border-input bg-background px-2 p
                 Actualizar el costo del insumo y recalcular las recetas
             </label>
         </div>
+
+        <label v-if="form.tipo === 'entrega'" class="flex items-center gap-2 text-xs">
+            <input v-model="form.pagado" type="checkbox" class="h-4 w-4" />
+            Lo pagué en el momento (no queda deuda)
+        </label>
 
         <div>
             <label class="text-xs text-muted-foreground">Observación{{ form.tipo === 'ajuste' ? '' : ' (opcional)' }}</label>
