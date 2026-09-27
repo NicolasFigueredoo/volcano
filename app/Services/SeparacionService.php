@@ -59,6 +59,29 @@ class SeparacionService
     }
 
     /**
+     * Genera el snapshot de las ventas que no lo tienen (por ejemplo, las
+     * registradas antes de que existiera venta_insumos). Usa la receta y el
+     * costo vigentes al momento de completarlo. Sin caja, completa todas las
+     * cajas desde la fecha de corte.
+     */
+    public static function completarSnapshots(?Caja $caja = null): void
+    {
+        Venta::query()
+            ->when(
+                $caja,
+                fn ($q) => $q->where('caja_id', $caja->id),
+                fn ($q) => $q->whereIn(
+                    'caja_id',
+                    Caja::query()->select('id')->whereDate('fecha_operativa', '>=', config('separacion.fecha_corte'))
+                )
+            )
+            ->where('estado', '!=', 'anulado')
+            ->whereDoesntHave('insumos')
+            ->get()
+            ->each(fn (Venta $venta) => self::sincronizar($venta));
+    }
+
+    /**
      * Expande cada detalle por la receta de su variante. Los insumos con
      * descuenta_stock = false (aceite, garrafa, descartables) entran igual,
      * prorrateados por su costo_unitario como en Variante::recalcularCosto().
@@ -290,6 +313,8 @@ class SeparacionService
      */
     public static function resumenCaja(Caja $caja): array
     {
+        self::completarSnapshots($caja);
+
         $insumos = collect(self::unidadesPorInsumo(VentaInsumo::where('venta_insumos.caja_id', $caja->id)));
 
         $grupos = $insumos
@@ -309,6 +334,9 @@ class SeparacionService
                 'id' => $caja->id,
                 'fecha_operativa' => $caja->fecha_operativa?->toDateString(),
                 'estado' => $caja->estado,
+                // Antes del corte las ventas se contaron a mano: no suman al
+                // estado de los proveedores y separarlas sería contarlas dos veces.
+                'antes_del_corte' => $caja->fecha_operativa?->toDateString() < config('separacion.fecha_corte'),
             ],
             'grupos' => $grupos,
             'total' => round((float) $insumos->sum('monto'), 2),
@@ -323,6 +351,8 @@ class SeparacionService
      */
     public static function lineasSeparacion(Caja $caja): array
     {
+        self::completarSnapshots($caja);
+
         $insumos = collect(self::unidadesPorInsumo(VentaInsumo::where('venta_insumos.caja_id', $caja->id)));
 
         $proveedores = Proveedor::whereIn('id', $insumos->pluck('proveedor_id')->filter()->unique())

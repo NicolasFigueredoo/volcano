@@ -138,6 +138,8 @@ class SeparacionController extends Controller
      */
     private function payload(): array
     {
+        SeparacionService::completarSnapshots();
+
         $grupos = SeparacionService::acumulados();
         $cajaHoy = SeparacionService::cajaDeHoy();
 

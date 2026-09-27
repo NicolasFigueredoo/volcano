@@ -258,6 +258,39 @@ it('el cajero confirma la separación de su caja una sola vez', function () {
         ->and((float) $estado['falta_separar'])->toEqual(0.0);
 });
 
+it('completa el snapshot de ventas registradas antes de que existiera', function () {
+    $ctx = escenarioProveedor();
+
+    venderDoble($ctx, 2);
+
+    // Simula ventas cargadas antes del deploy: sin filas en venta_insumos.
+    VentaInsumo::query()->delete();
+
+    $dia = $this->actingAs($ctx['admin'])->getJson("/api/separacion/dia?caja_id={$ctx['caja']->id}")->assertOk()->json();
+
+    expect((float) $dia['total'])->toEqual(2 * 3300.0)
+        ->and($dia['caja']['antes_del_corte'])->toBeFalse()
+        ->and(VentaInsumo::count())->toBe(2);
+
+    // Volver a abrirla no duplica nada.
+    $this->actingAs($ctx['admin'])->getJson("/api/separacion/dia?caja_id={$ctx['caja']->id}")->assertOk();
+
+    expect(VentaInsumo::count())->toBe(2);
+});
+
+it('avisa cuando la caja es anterior a la fecha de corte', function () {
+    $ctx = escenarioProveedor();
+
+    venderDoble($ctx);
+
+    config(['separacion.fecha_corte' => now()->addDays(2)->toDateString()]);
+
+    $dia = $this->actingAs($ctx['admin'])->getJson("/api/separacion/dia?caja_id={$ctx['caja']->id}")->assertOk()->json();
+
+    expect($dia['caja']['antes_del_corte'])->toBeTrue()
+        ->and((float) estadoCarnicero($ctx)['vendido_sin_pagar'])->toEqual(0.0);
+});
+
 it('el cajero no ve proveedores ni cajas viejas', function () {
     $ctx = escenarioProveedor();
 

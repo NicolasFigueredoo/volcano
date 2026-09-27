@@ -37,7 +37,7 @@ export interface SeparacionCaja {
 }
 
 export interface ResumenDia {
-    caja: { id: number; fecha_operativa: string | null; estado: string };
+    caja: { id: number; fecha_operativa: string | null; estado: string; antes_del_corte: boolean };
     grupos: GrupoDia[];
     total: number;
     lineas?: LineaSeparacion[];

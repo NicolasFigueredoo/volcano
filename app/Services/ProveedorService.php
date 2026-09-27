@@ -96,6 +96,8 @@ class ProveedorService
      */
     public static function listado(bool $soloActivos = false): array
     {
+        SeparacionService::completarSnapshots();
+
         $cajaHoy = SeparacionService::cajaDeHoy();
 
         return Proveedor::query()

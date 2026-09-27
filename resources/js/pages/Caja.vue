@@ -216,14 +216,18 @@ function horaVenta(d: string | null) {
     return new Date(d).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 }
 
+// Las fechas operativas llegan como "2026-09-27T00:00:00.000000Z" (medianoche
+// UTC). Pasarlas por new Date() las corre al día anterior en Argentina, así
+// que se toma solo la parte "YYYY-MM-DD", sin zona horaria.
 function fecha(d: string | null) {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('es-AR');
+    const [y, m, dia] = d.slice(0, 10).split('-').map(Number);
+    return new Date(y, m - 1, dia).toLocaleDateString('es-AR');
 }
 
 function fechaInput(d: string | null) {
     if (!d) return '';
-    return new Date(d).toISOString().slice(0, 10);
+    return d.slice(0, 10);
 }
 
 // ── Carga ────────────────────────────────────────────────────────────────────

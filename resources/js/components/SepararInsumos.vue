@@ -96,6 +96,14 @@ async function confirmar() {
 
                 <!-- Para separar -->
                 <template v-else-if="dia">
+                    <p
+                        v-if="dia.caja.antes_del_corte && (dia.lineas ?? []).length"
+                        class="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400"
+                    >
+                        Esta caja es anterior a la fecha de corte: sus ventas no suman en los proveedores. Si ya la contaste a mano, no la separes
+                        acá para no contarla dos veces.
+                    </p>
+
                     <p v-if="!(dia.lineas ?? []).length" class="text-sm text-muted-foreground">Esta caja no tiene insumos vendidos para separar.</p>
 
                     <div v-for="(l, i) in dia.lineas ?? []" :key="filas[i]?.key" class="flex items-start gap-3 rounded border p-3">
