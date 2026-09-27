@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
+import SepararInsumos from '@/components/SepararInsumos.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApi } from '@/composables/useApi';
 import { computed, onMounted, reactive, ref } from 'vue';
-import { Download, Eye, Lock, Minus, Pencil, Plus, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next';
+import { Download, Eye, Lock, Minus, Pencil, PiggyBank, Plus, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -264,16 +265,27 @@ async function abrirCaja() {
 
 async function cerrarCaja() {
     if (!confirm('¿Confirmar cierre de caja?')) return;
-    await post('/api/caja/cerrar', {});
+    const cajaId = data.value?.caja?.id ?? null;
+    const res = await post('/api/caja/cerrar', {});
     await cargar();
+
+    // Paso siguiente al cierre: apartar la plata de insumos.
+    if (res && cajaId) separandoCaja.value = cajaId;
 }
 
 async function cerrarManual(caja: Caja) {
     if (!confirm(`¿Cerrar manualmente la caja del ${fecha(caja.fecha_operativa)}?\nSe calcularán los totales desde las ventas registradas.`)) return;
-    await post(`/api/caja/${caja.id}/cerrar-manual`, {});
+    const res = await post(`/api/caja/${caja.id}/cerrar-manual`, {});
     cajaDetalle.value = null;
     await cargar();
+
+    if (res) separandoCaja.value = caja.id;
 }
+
+// ── Caja: separar insumos ────────────────────────────────────────────────────
+
+// Id de la caja cuyo modal "Separar insumos" está abierto.
+const separandoCaja = ref<number | null>(null);
 
 // ── Caja: ver detalle guardado ───────────────────────────────────────────────
 
@@ -554,6 +566,13 @@ onMounted(cargar);
                             size="sm" @click="abrirCaja" :disabled="loading"
                         >
                             <Unlock class="w-4 h-4 mr-1" /> Abrir caja
+                        </Button>
+
+                        <Button
+                            v-if="data?.caja?.estado === 'cerrada'"
+                            variant="outline" size="sm" @click="separandoCaja = data.caja.id"
+                        >
+                            <PiggyBank class="w-4 h-4 mr-1" /> Separar insumos
                         </Button>
 
                         <p v-if="error" class="text-xs text-destructive basis-full">{{ error }}</p>
@@ -1250,6 +1269,9 @@ onMounted(cargar);
                             <Button v-if="cajaDetalle.caja.estado === 'abierta'" variant="destructive" size="sm" @click="cerrarManual(cajaDetalle.caja)" :disabled="loading">
                                 <Lock class="w-4 h-4 mr-1" /> Cerrar manualmente
                             </Button>
+                            <Button variant="outline" size="sm" @click="separandoCaja = cajaDetalle.caja.id">
+                                <PiggyBank class="w-4 h-4 mr-1" /> Separar insumos
+                            </Button>
                             <Button variant="outline" size="sm" @click="abrirNuevaVenta(cajaDetalle.caja)">
                                 <Plus class="w-4 h-4 mr-1" /> Agregar pedido
                             </Button>
@@ -1416,6 +1438,9 @@ onMounted(cargar);
                     </div>
                 </div>
             </div>
+
+            <!-- Modal: separar insumos de una caja -->
+            <SepararInsumos v-if="separandoCaja" :caja-id="separandoCaja" @close="separandoCaja = null" />
 
         </div>
     </AppLayout>

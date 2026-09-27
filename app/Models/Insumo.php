@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Insumo extends Model
@@ -15,6 +16,9 @@ class Insumo extends Model
         'stock_minimo',
         'descuenta_stock',
         'grupo_separacion',
+        'proveedor_id',
+        'unidad_compra',
+        'equivalencia_compra',
         'activo',
     ];
 
@@ -47,9 +51,15 @@ class Insumo extends Model
         'stock_minimo' => 'decimal:3',
         'activo' => 'boolean',
         'descuenta_stock' => 'boolean',
+        'equivalencia_compra' => 'decimal:3',
     ];
 
     // ── Relationships ────────────────────────────────────────────────────────
+
+    public function proveedor(): BelongsTo
+    {
+        return $this->belongsTo(Proveedor::class);
+    }
 
     public function recetas(): HasMany
     {

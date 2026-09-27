@@ -682,8 +682,8 @@ class CajaController extends Controller
             }
         }
 
-        // Cambiaron los items: se recalcula lo que hay que apartar.
-        SeparacionService::sincronizar($venta);
+        // Cambiaron los items: se rearma el snapshot de insumos.
+        SeparacionService::regenerar($venta->fresh());
 
         return response()->json($venta->fresh(['detalles', 'pagos', 'user:id,name']));
     }

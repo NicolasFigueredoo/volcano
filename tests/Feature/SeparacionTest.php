@@ -6,9 +6,13 @@ use App\Models\Insumo;
 use App\Models\Producto;
 use App\Models\Receta;
 use App\Models\Reposicion;
-use App\Models\SeparacionMovimiento;
 use App\Models\Variante;
 use App\Models\Venta;
+use App\Models\VentaInsumo;
+
+beforeEach(function () {
+    config(['separacion.fecha_corte' => '2000-01-01']);
+});
 
 /**
  * Arma un escenario mínimo: una hamburguesa con 1 medallón de carne ($1000),
@@ -95,19 +99,19 @@ function ventaPagada(array $ctx, int $cantidad = 1): Venta
     );
 }
 
-it('genera un movimiento por grupo cuando la venta queda pagada', function () {
+it('guarda el snapshot de insumos de la venta', function () {
     $ctx = escenarioSeparacion();
 
     $venta = ventaPagada($ctx, 2);
 
-    $movimientos = SeparacionMovimiento::where('venta_id', $venta->id)
-        ->pluck('monto', 'grupo')
-        ->map(fn ($m) => (float) $m);
+    $filas = VentaInsumo::where('venta_id', $venta->id)->get()->keyBy('grupo_separacion');
 
-    expect($movimientos)->toHaveCount(3)
-        ->and($movimientos['carne'])->toEqual(2000.0)
-        ->and($movimientos['pan'])->toEqual(800.0)
-        ->and($movimientos['descartables'])->toEqual(200.0);
+    expect($filas)->toHaveCount(3)
+        ->and((float) $filas['carne']->subtotal)->toEqual(2000.0)
+        ->and((float) $filas['carne']->cantidad)->toEqual(2.0)
+        ->and($filas['carne']->caja_id)->toBe($ctx['caja']->id)
+        ->and((float) $filas['pan']->subtotal)->toEqual(800.0)
+        ->and((float) $filas['descartables']->subtotal)->toEqual(200.0);
 });
 
 it('no duplica movimientos si la venta cambia de estado varias veces', function () {
@@ -119,12 +123,12 @@ it('no duplica movimientos si la venta cambia de estado varias veces', function 
     $venta->update(['estado' => 'pagado']);
     $venta->update(['estado' => 'entregado']);
 
-    expect(SeparacionMovimiento::where('venta_id', $venta->id)->count())->toBe(3)
-        ->and((float) SeparacionMovimiento::where('venta_id', $venta->id)->where('grupo', 'carne')->value('monto'))
+    expect(VentaInsumo::where('venta_id', $venta->id)->count())->toBe(3)
+        ->and((float) VentaInsumo::where('venta_id', $venta->id)->where('grupo_separacion', 'carne')->value('subtotal'))
         ->toEqual(1000.0);
 });
 
-it('no genera movimientos mientras la venta no está pagada', function () {
+it('genera el snapshot aunque la venta esté pendiente (igual que costo_insumos)', function () {
     $ctx = escenarioSeparacion();
 
     $venta = Venta::registrarEnCaja(
@@ -135,7 +139,7 @@ it('no genera movimientos mientras la venta no está pagada', function () {
         $ctx['cajero']->id
     );
 
-    expect(SeparacionMovimiento::where('venta_id', $venta->id)->count())->toBe(0);
+    expect(VentaInsumo::where('venta_id', $venta->id)->count())->toBe(3);
 });
 
 it('acumula el total de un grupo y lo resetea al reponer', function () {
@@ -164,11 +168,11 @@ it('acumula el total de un grupo y lo resetea al reponer', function () {
         ->and($carneDespues['cantidad_ventas'])->toBe(0)
         ->and((float) $despues['historial'][0]['diferencia'])->toEqual(500.0);
 
-    // Nada se borra: los movimientos quedan estampados con la reposición.
+    // Nada se borra: las filas quedan estampadas con la reposición.
     $reposicion = Reposicion::where('grupo', 'carne')->firstOrFail();
 
-    expect(SeparacionMovimiento::where('grupo', 'carne')->count())->toBe(2)
-        ->and(SeparacionMovimiento::where('reposicion_id', $reposicion->id)->count())->toBe(2);
+    expect(VentaInsumo::where('grupo_separacion', 'carne')->count())->toBe(2)
+        ->and(VentaInsumo::where('reposicion_id', $reposicion->id)->count())->toBe(2);
 });
 
 it('descuenta del acumulado una venta anulada que todavía no se repuso', function () {
@@ -179,8 +183,8 @@ it('descuenta del acumulado una venta anulada que todavía no se repuso', functi
 
     $venta->update(['estado' => 'anulado']);
 
-    expect(SeparacionMovimiento::where('venta_id', $venta->id)->count())->toBe(0)
-        ->and(SeparacionMovimiento::where('venta_id', $otra->id)->count())->toBe(3);
+    expect(VentaInsumo::where('venta_id', $venta->id)->count())->toBe(0)
+        ->and(VentaInsumo::where('venta_id', $otra->id)->count())->toBe(3);
 });
 
 it('conserva los movimientos ya repuestos aunque se anule la venta', function () {
@@ -193,8 +197,31 @@ it('conserva los movimientos ya repuestos aunque se anule la venta', function ()
 
     $venta->update(['estado' => 'anulado']);
 
-    expect(SeparacionMovimiento::where('venta_id', $venta->id)->where('grupo', 'carne')->count())->toBe(1)
-        ->and(SeparacionMovimiento::where('venta_id', $venta->id)->where('grupo', 'pan')->count())->toBe(0);
+    expect(VentaInsumo::where('venta_id', $venta->id)->where('grupo_separacion', 'carne')->count())->toBe(1)
+        ->and(VentaInsumo::where('venta_id', $venta->id)->where('grupo_separacion', 'pan')->count())->toBe(0);
+});
+
+it('no cuenta ventas de cajas anteriores a la fecha de corte', function () {
+    $ctx = escenarioSeparacion();
+    $admin = usuarioConRol('admin');
+
+    ventaPagada($ctx);
+
+    config(['separacion.fecha_corte' => now()->addDays(2)->toDateString()]);
+
+    $res = $this->actingAs($admin)->getJson('/api/separacion')->assertOk()->json();
+
+    expect((float) $res['total_general'])->toEqual(0.0);
+});
+
+it('rearma el snapshot al des-anular una venta', function () {
+    $ctx = escenarioSeparacion();
+
+    $venta = ventaPagada($ctx);
+    $venta->update(['estado' => 'anulado']);
+    $venta->update(['estado' => 'pagado']);
+
+    expect(VentaInsumo::where('venta_id', $venta->id)->count())->toBe(3);
 });
 
 it('solo permite el acceso a los administradores', function () {

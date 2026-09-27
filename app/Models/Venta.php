@@ -51,6 +51,11 @@ class Venta extends Model
         return $this->hasMany(PagoVenta::class);
     }
 
+    public function insumos(): HasMany
+    {
+        return $this->hasMany(VentaInsumo::class);
+    }
+
     public function scopeDeHoy($query)
     {
         return $query->whereDate('created_at', today());

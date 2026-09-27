@@ -117,6 +117,9 @@ class AdminController extends Controller
             'stock_minimo' => 'required|numeric|min:0',
             'descuenta_stock' => 'boolean',
             'grupo_separacion' => 'nullable|in:carne,pan,papas,cheddar,panceta,descartables,varios',
+            'proveedor_id' => 'nullable|integer|exists:proveedores,id',
+            'unidad_compra' => 'nullable|string|max:50',
+            'equivalencia_compra' => 'nullable|numeric|gt:0',
         ]);
 
         $insumo = Insumo::create(
@@ -126,7 +129,10 @@ class AdminController extends Controller
                 'costo_unitario',
                 'stock_minimo',
                 'descuenta_stock',
-                'grupo_separacion'
+                'grupo_separacion',
+                'proveedor_id',
+                'unidad_compra',
+                'equivalencia_compra'
             )
         );
 
@@ -143,6 +149,9 @@ class AdminController extends Controller
             'activo' => 'boolean',
             'descuenta_stock' => 'boolean',
             'grupo_separacion' => 'nullable|in:carne,pan,papas,cheddar,panceta,descartables,varios',
+            'proveedor_id' => 'nullable|integer|exists:proveedores,id',
+            'unidad_compra' => 'nullable|string|max:50',
+            'equivalencia_compra' => 'nullable|numeric|gt:0',
         ]);
 
         $insumo->update(
@@ -153,7 +162,10 @@ class AdminController extends Controller
                 'stock_minimo',
                 'activo',
                 'descuenta_stock',
-                'grupo_separacion'
+                'grupo_separacion',
+                'proveedor_id',
+                'unidad_compra',
+                'equivalencia_compra'
             )
         );
 

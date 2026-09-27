@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\CajaController;
 use App\Http\Controllers\Api\ComboController;
 use App\Http\Controllers\Api\InventarioController;
 use App\Http\Controllers\Api\PosController;
+use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\SeparacionController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -86,10 +87,27 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::put('gastos-fijos/{gasto}', [AdminController::class, 'actualizarGastoFijo']);
     });
 
-    // ── Separación de insumos (solo admin) ────────────────────────
-    Route::middleware('es_admin')->prefix('separacion')->group(function () {
-        Route::get('/', [SeparacionController::class, 'index']);
-        Route::post('{grupo}/reponer', [SeparacionController::class, 'reponer']);
+    // ── Separación de insumos ─────────────────────────────────────
+    // dia/confirmar los usa también el cajero al cerrar su caja: el permiso
+    // se chequea en el controller (solo la caja de hoy para no-admin).
+    Route::prefix('separacion')->group(function () {
+        Route::get('dia', [SeparacionController::class, 'dia']);
+        Route::post('caja/{caja}/confirmar', [SeparacionController::class, 'confirmar']);
+
+        Route::middleware('es_admin')->group(function () {
+            Route::get('/', [SeparacionController::class, 'index']);
+            Route::post('{grupo}/reponer', [SeparacionController::class, 'reponer']);
+        });
+    });
+
+    // ── Proveedores (solo admin) ──────────────────────────────────
+    Route::middleware('es_admin')->prefix('proveedores')->group(function () {
+        Route::get('/', [ProveedorController::class, 'index']);
+        Route::post('/', [ProveedorController::class, 'store']);
+        Route::put('{proveedor}', [ProveedorController::class, 'update']);
+        Route::put('{proveedor}/insumos', [ProveedorController::class, 'asignarInsumos']);
+        Route::get('{proveedor}/movimientos', [ProveedorController::class, 'movimientos']);
+        Route::post('{proveedor}/movimientos', [ProveedorController::class, 'registrarMovimiento']);
     });
 
     Route::middleware('es_admin')->prefix('usuarios')->group(function () {
