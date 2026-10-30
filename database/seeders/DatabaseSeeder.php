@@ -12,6 +12,7 @@ class DatabaseSeeder extends Seeder
             UsersSeeder::class,
             InsumosSeeder::class,
             ProductosSeeder::class,
+            CartaBebidasSeeder::class,
             GastosFijosSeeder::class,
         ]);
     }

@@ -15,7 +15,7 @@ class Categoria extends Model
 
     protected $casts = [
         'activo' => 'boolean',
-        'orden'  => 'integer',
+        'orden' => 'integer',
     ];
 
     // ── Relationships ────────────────────────────────────────────────────────
@@ -25,10 +25,22 @@ class Categoria extends Model
         return $this->hasMany(Producto::class);
     }
 
+    public function inversiones(): HasMany
+    {
+        return $this->hasMany(Inversion::class);
+    }
+
     // ── Scopes ───────────────────────────────────────────────────────────────
 
     public function scopeActivo($query)
     {
         return $query->where('activo', true)->orderBy('orden');
+    }
+
+    // Misma regla que la migración del rubro bebidas: la categoría cuyo
+    // nombre contiene "bebida".
+    public static function bebidas(): ?self
+    {
+        return self::whereRaw('LOWER(nombre) LIKE ?', ['%bebida%'])->orderBy('id')->first();
     }
 }

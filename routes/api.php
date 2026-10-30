@@ -85,6 +85,12 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::get('gastos-fijos', [AdminController::class, 'gastosFijos']);
         Route::post('gastos-fijos', [AdminController::class, 'crearGastoFijo']);
         Route::put('gastos-fijos/{gasto}', [AdminController::class, 'actualizarGastoFijo']);
+
+        // Bebidas: carta, precios de compra e inversión a recuperar
+        Route::get('bebidas', [AdminController::class, 'bebidas']);
+        Route::post('inversiones', [AdminController::class, 'crearInversion']);
+        Route::put('inversiones/{inversion}', [AdminController::class, 'actualizarInversion']);
+        Route::delete('inversiones/{inversion}', [AdminController::class, 'eliminarInversion']);
     });
 
     // ── Separación de insumos ─────────────────────────────────────

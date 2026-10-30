@@ -6,15 +6,16 @@ import { useApi } from '@/composables/useApi';
 import { onMounted, ref, computed } from 'vue';
 import { Plus, Pencil, Trash2, X, ChevronDown, ChevronUp } from 'lucide-vue-next';
 
-const { get, post, put, loading } = useApi();
+const { get, post, put, del, loading } = useApi();
 
-const tab = ref<'productos' | 'combos' | 'insumos' | 'gastos'>('productos');
+const tab = ref<'productos' | 'combos' | 'insumos' | 'gastos' | 'bebidas'>('productos');
 const categorias = ref<any[]>([]);
 const productos = ref<any[]>([]);
 const insumos = ref<any[]>([]);
 const combos = ref<any[]>([]);
 const gastos = ref<any[]>([]);
 const variantes = ref<any[]>([]);
+const bebidas = ref<any>(null);
 const panel = ref<string | null>(null);
 const editingId = ref<number | null>(null);
 const expandido = ref<number | null>(null);
@@ -87,6 +88,17 @@ const fGasto = ref({
     activo: true,
 });
 
+const fInversion = ref({
+    monto: 0,
+    fecha: new Date().toISOString().slice(0, 10),
+    descripcion: '',
+});
+
+// Precio de compra (botella, pack, bolsa) de un insumo de bebidas
+const fCompra = ref({
+    precio: 0,
+});
+
 const fCombo = ref({
     nombre: '',
     descripcion: '',
@@ -107,13 +119,16 @@ const recetaItems = ref<{
 }[]>([]);
 
 async function cargarTodo() {
-    const [cats, prods, ins, cbs, gsts] = await Promise.all([
+    const [cats, prods, ins, cbs, gsts, bebs] = await Promise.all([
         get<any[]>('/api/admin/categorias'),
         get<any[]>('/api/admin/productos'),
         get<any[]>('/api/admin/insumos'),
         get<any[]>('/api/combos'),
         get<any[]>('/api/admin/gastos-fijos'),
+        get<any>('/api/admin/bebidas'),
     ]);
+
+    bebidas.value = bebs;
 
     categorias.value = cats ?? [];
     productos.value = prods ?? [];
@@ -186,6 +201,16 @@ function abrirPanel(tipo: string, data: any = null) {
             monto_mensual: Number(data?.monto_mensual ?? 0),
             dias_apertura_mes: Number(data?.dias_apertura_mes ?? 16),
             activo: data?.activo ?? true,
+        };
+    } else if (tipo === 'inversion') {
+        fInversion.value = {
+            monto: Number(data?.monto ?? 0),
+            fecha: data?.fecha ?? new Date().toISOString().slice(0, 10),
+            descripcion: data?.descripcion ?? '',
+        };
+    } else if (tipo === 'compra') {
+        fCompra.value = {
+            precio: Math.round(precioCompra(data)),
         };
     } else if (tipo === 'combo') {
         fCombo.value = {
@@ -282,6 +307,43 @@ async function guardarGasto() {
     await cargarTodo();
 }
 
+async function guardarInversion() {
+    if (editingId.value) {
+        await put(`/api/admin/inversiones/${editingId.value}`, fInversion.value as any);
+    } else {
+        await post('/api/admin/inversiones', {
+            ...fInversion.value,
+            categoria_id: bebidas.value?.categoria?.id,
+        } as any);
+    }
+
+    cerrarPanel();
+    await cargarTodo();
+}
+
+async function eliminarInversion(inv: any) {
+    if (!confirm(`¿Eliminar la inversión de ${fmt(inv.monto)}?`)) {
+        return;
+    }
+
+    await del(`/api/admin/inversiones/${inv.id}`);
+    await cargarTodo();
+}
+
+// El costo unitario sale de dividir el precio de compra por la equivalencia
+// (ej: botella de 750cc a $9.300 → $12.400 por litro).
+async function guardarCompra() {
+    const ins = insumos.value.find((i: any) => i.id === editingId.value);
+    const equivalencia = Number(ins?.equivalencia_compra ?? 0) || 1;
+
+    await put(`/api/admin/insumos/${editingId.value}`, {
+        costo_unitario: Math.round((Number(fCompra.value.precio) / equivalencia) * 100) / 100,
+    } as any);
+
+    cerrarPanel();
+    await cargarTodo();
+}
+
 async function guardarCombo() {
     const body = {
         ...fCombo.value,
@@ -364,6 +426,30 @@ function quitarRecetaItem(i: number) {
     recetaItems.value.splice(i, 1);
 }
 
+function precioCompra(ins: any) {
+    return Number(ins?.costo_unitario ?? 0) * (Number(ins?.equivalencia_compra ?? 0) || 1);
+}
+
+function costoLinea(r: any) {
+    return Number(r.cantidad) * Number(r.insumo?.costo_unitario ?? 0);
+}
+
+// Cuántos vasos rinde una unidad de compra del insumo más caro que se compra
+// por botella/pack (ej: Fernet 1L ÷ 0,2L = 5 vasos x botella).
+function rendimiento(v: any) {
+    const principal = (v.recetas ?? [])
+        .filter((r: any) => Number(r.insumo?.equivalencia_compra) > 0 && Number(r.cantidad) > 0)
+        .sort((a: any, b: any) => costoLinea(b) - costoLinea(a))[0];
+
+    if (!principal) {
+        return null;
+    }
+
+    const cantidad = Number(principal.insumo.equivalencia_compra) / Number(principal.cantidad);
+
+    return `${fmtNumero(Math.round(cantidad * 10) / 10)} x ${principal.insumo.unidad_compra ?? principal.insumo.nombre}`;
+}
+
 const costoRecetaActual = computed(() =>
     recetaItems.value.reduce((acc, item) => {
         const ins = insumos.value.find((i: any) => i.id === item.insumo_id);
@@ -391,7 +477,7 @@ const margenActual = computed(() => {
                 <!-- Tabs -->
                 <div class="flex gap-2 flex-wrap">
                     <Button
-                        v-for="[k, v] in [['productos', 'Productos'], ['combos', 'Combos'], ['insumos', 'Insumos'], ['gastos', 'Gastos fijos']]"
+                        v-for="[k, v] in [['productos', 'Productos'], ['combos', 'Combos'], ['insumos', 'Insumos'], ['gastos', 'Gastos fijos'], ['bebidas', 'Bebidas']]"
                         :key="k"
                         :variant="tab === k ? 'default' : 'outline'"
                         size="sm"
@@ -761,6 +847,262 @@ const margenActual = computed(() => {
                         </CardContent>
                     </Card>
                 </div>
+
+                <!-- BEBIDAS -->
+                <div v-if="tab === 'bebidas'" class="flex flex-col gap-3">
+                    <div v-if="!bebidas" class="text-sm text-muted-foreground">
+                        No hay una categoría "Bebidas". Creala desde Productos.
+                    </div>
+
+                    <template v-else>
+                        <!-- Recupero de la inversión -->
+                        <Card>
+                            <CardContent class="p-4 flex flex-col gap-3">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div>
+                                        <p class="text-sm text-muted-foreground">Recupero de la inversión</p>
+                                        <p class="text-2xl font-semibold">
+                                            {{ fmt(bebidas.recupero.ganancia) }}
+                                            <span class="text-base font-normal text-muted-foreground">
+                                                de {{ fmt(bebidas.recupero.invertido) }}
+                                            </span>
+                                        </p>
+                                    </div>
+
+                                    <Button size="sm" variant="outline" @click="abrirPanel('inversion')">
+                                        <Plus class="w-4 h-4 mr-1" />
+                                        Inversión
+                                    </Button>
+                                </div>
+
+                                <div class="h-3 w-full overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        class="h-full rounded-full transition-all"
+                                        :class="bebidas.recupero.pct >= 100 ? 'bg-green-500' : 'bg-yellow-500'"
+                                        :style="{ width: Math.max(2, Number(bebidas.recupero.pct)) + '%' }"
+                                    />
+                                </div>
+
+                                <div class="flex justify-between text-xs text-muted-foreground">
+                                    <span>
+                                        {{ Number(bebidas.recupero.pct).toFixed(1) }}% recuperado (en ganancia)
+                                    </span>
+
+                                    <span v-if="bebidas.recupero.falta > 0">
+                                        Faltan {{ fmt(bebidas.recupero.falta) }}
+                                    </span>
+
+                                    <span v-else class="text-green-600 font-medium">¡Inversión recuperada!</span>
+                                </div>
+
+                                <div class="grid grid-cols-3 gap-2 p-2 rounded bg-muted/30 text-center">
+                                    <div>
+                                        <p class="text-xs text-muted-foreground">Cobrado</p>
+                                        <p class="text-sm font-semibold">{{ fmt(bebidas.recupero.ventas) }}</p>
+                                    </div>
+
+                                    <div>
+                                        <p class="text-xs text-muted-foreground">Unidades</p>
+                                        <p class="text-sm font-semibold">{{ fmtNumero(bebidas.recupero.unidades) }}</p>
+                                    </div>
+
+                                    <div>
+                                        <p class="text-xs text-muted-foreground">Desde</p>
+                                        <p class="text-sm font-semibold">{{ bebidas.recupero.desde ?? '—' }}</p>
+                                    </div>
+                                </div>
+
+                                <div v-if="bebidas.inversiones.length" class="flex flex-col">
+                                    <div
+                                        v-for="inv in bebidas.inversiones"
+                                        :key="inv.id"
+                                        class="flex items-center justify-between text-sm py-1.5 border-b last:border-0"
+                                    >
+                                        <span class="text-muted-foreground">
+                                            {{ inv.fecha }} · {{ inv.descripcion || 'Inversión' }}
+                                        </span>
+
+                                        <div class="flex items-center gap-1">
+                                            <span class="font-medium mr-2">{{ fmt(inv.monto) }}</span>
+
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                class="h-6 w-6"
+                                                @click="abrirPanel('inversion', inv)"
+                                            >
+                                                <Pencil class="w-3 h-3" />
+                                            </Button>
+
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                class="h-6 w-6"
+                                                @click="eliminarInversion(inv)"
+                                            >
+                                                <Trash2 class="w-3 h-3" />
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <!-- Carta -->
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                Carta de bebidas
+                            </h3>
+
+                            <Button size="sm" @click="abrirPanel('producto', { categoria_id: bebidas.categoria.id })">
+                                <Plus class="w-4 h-4 mr-1" />
+                                Nueva bebida
+                            </Button>
+                        </div>
+
+                        <p class="text-xs text-muted-foreground -mt-1">
+                            Los gastos fijos (alquiler, empleados, etc.) se descuentan por día al cerrar la caja,
+                            igual que con las hamburguesas.
+                        </p>
+
+                        <template v-for="prod in bebidas.productos" :key="prod.id">
+                            <Card v-if="!prod.variantes.length">
+                                <CardContent class="p-3 flex items-center justify-between">
+                                    <span class="font-medium text-sm">{{ prod.nombre }}</span>
+
+                                    <Button size="sm" variant="outline" @click="abrirPanel('variante', { producto_id: prod.id })">
+                                        <Plus class="w-4 h-4 mr-1" />
+                                        Precio / tamaño
+                                    </Button>
+                                </CardContent>
+                            </Card>
+
+                            <Card
+                                v-for="v in prod.variantes"
+                                :key="v.id"
+                                :class="{ 'opacity-50': !prod.activo || !v.activo }"
+                            >
+                                <CardContent class="p-3">
+                                    <div class="flex items-center justify-between gap-2">
+                                        <div>
+                                            <span class="font-medium text-sm">{{ prod.nombre }}</span>
+                                            <span class="text-xs text-muted-foreground"> ({{ v.nombre }})</span>
+                                            <span class="font-semibold text-sm ml-2">{{ fmt(v.precio_venta) }}</span>
+                                        </div>
+
+                                        <div class="flex items-center gap-1">
+                                            <button
+                                                @click="abrirReceta(v, prod.id)"
+                                                class="text-xs px-2 py-0.5 rounded border border-primary text-primary hover:bg-primary hover:text-primary-foreground transition-colors"
+                                            >
+                                                Receta
+                                            </button>
+
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                class="h-7 w-7"
+                                                title="Precio"
+                                                @click="abrirPanel('variante', { ...v, producto_id: prod.id })"
+                                            >
+                                                <Pencil class="w-3 h-3" />
+                                            </Button>
+
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                class="h-7 w-7"
+                                                @click="toggleActivo('variante', v.id, !v.activo)"
+                                            >
+                                                <Trash2 class="w-3 h-3" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-2 pl-2 flex flex-col text-xs text-muted-foreground font-mono">
+                                        <div
+                                            v-for="r in v.recetas"
+                                            :key="r.id"
+                                            class="flex justify-between"
+                                        >
+                                            <span>{{ r.insumo?.nombre }} {{ fmtNumero(r.cantidad) }} {{ r.insumo?.unidad }}</span>
+                                            <span>{{ fmt(costoLinea(r)) }}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-2 pt-2 border-t flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                                        <span>Costo <b>{{ fmt(v.costo_calculado) }}</b></span>
+
+                                        <span class="text-green-600">
+                                            Ganancia <b>{{ fmt(Number(v.precio_venta) - Number(v.costo_calculado)) }}</b>
+                                            ({{
+                                                Number(v.precio_venta) > 0
+                                                    ? ((Number(v.precio_venta) - Number(v.costo_calculado)) / Number(v.precio_venta) * 100).toFixed(0)
+                                                    : 0
+                                            }}%)
+                                        </span>
+
+                                        <span v-if="rendimiento(v)" class="text-muted-foreground">
+                                            {{ rendimiento(v) }}
+                                        </span>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </template>
+
+                        <!-- Precios de compra -->
+                        <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mt-2">
+                            Precios de compra
+                        </h3>
+
+                        <Card>
+                            <CardContent class="p-0">
+                                <table class="w-full text-sm">
+                                    <thead>
+                                        <tr class="border-b text-xs text-muted-foreground">
+                                            <th class="text-left p-3 font-medium">Insumo</th>
+                                            <th class="text-left p-3 font-medium">Se compra por</th>
+                                            <th class="text-right p-3 font-medium">Precio compra</th>
+                                            <th class="text-right p-3 font-medium">Costo unit.</th>
+                                            <th class="p-3"></th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody>
+                                        <tr
+                                            v-for="ins in bebidas.insumos"
+                                            :key="ins.id"
+                                            class="border-b last:border-0 hover:bg-muted/50"
+                                        >
+                                            <td class="p-3 font-medium">{{ ins.nombre }}</td>
+
+                                            <td class="p-3 text-muted-foreground">
+                                                {{ ins.unidad_compra || ins.unidad }}
+                                            </td>
+
+                                            <td class="p-3 text-right">{{ fmt(precioCompra(ins)) }}</td>
+
+                                            <td class="p-3 text-right text-muted-foreground">
+                                                {{ fmt(ins.costo_unitario) }} / {{ ins.unidad }}
+                                            </td>
+
+                                            <td class="p-3 text-right">
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    class="h-7 w-7"
+                                                    @click="abrirPanel('compra', ins)"
+                                                >
+                                                    <Pencil class="w-3 h-3" />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </CardContent>
+                        </Card>
+                    </template>
+                </div>
             </div>
 
             <!-- PANEL LATERAL -->
@@ -779,6 +1121,8 @@ const margenActual = computed(() => {
                                             categoria: 'categoría',
                                             gasto: 'gasto fijo',
                                             combo: 'combo',
+                                            inversion: 'inversión',
+                                            compra: 'precio de compra',
                                         }[panel] ?? '')
                                 }}
                             </CardTitle>
@@ -1094,6 +1438,86 @@ const margenActual = computed(() => {
                                 </Button>
 
                                 <Button size="sm" class="flex-1" @click="guardarGasto" :disabled="loading">
+                                    Guardar
+                                </Button>
+                            </div>
+                        </template>
+
+                        <!-- Inversión -->
+                        <template v-if="panel === 'inversion'">
+                            <div>
+                                <label class="text-xs text-muted-foreground">Monto invertido</label>
+                                <input
+                                    type="number"
+                                    v-model="fInversion.monto"
+                                    min="0"
+                                    class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="text-xs text-muted-foreground">Fecha (la ganancia cuenta desde la primera)</label>
+                                <input
+                                    type="date"
+                                    v-model="fInversion.fecha"
+                                    class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="text-xs text-muted-foreground">Descripción (opcional)</label>
+                                <input
+                                    v-model="fInversion.descripcion"
+                                    class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                />
+                            </div>
+
+                            <div class="flex gap-2">
+                                <Button variant="outline" size="sm" class="flex-1" @click="cerrarPanel">
+                                    Cancelar
+                                </Button>
+
+                                <Button
+                                    size="sm"
+                                    class="flex-1"
+                                    @click="guardarInversion"
+                                    :disabled="loading || Number(fInversion.monto) <= 0"
+                                >
+                                    Guardar
+                                </Button>
+                            </div>
+                        </template>
+
+                        <!-- Precio de compra -->
+                        <template v-if="panel === 'compra'">
+                            <template v-for="ins in insumos.filter((i: any) => i.id === editingId)" :key="ins.id">
+                                <p class="text-sm font-medium">{{ ins.nombre }}</p>
+
+                                <div>
+                                    <label class="text-xs text-muted-foreground">
+                                        Precio por {{ ins.unidad_compra || ins.unidad }}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        v-model="fCompra.precio"
+                                        min="0"
+                                        class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                    />
+                                </div>
+
+                                <p class="text-xs text-muted-foreground">
+                                    Costo por {{ ins.unidad }}:
+                                    {{ fmt(Number(fCompra.precio) / (Number(ins.equivalencia_compra) || 1)) }}.
+                                    Se recalcula el costo de todos los tragos que lo usan.
+                                </p>
+                            </template>
+
+                            <div class="flex gap-2">
+                                <Button variant="outline" size="sm" class="flex-1" @click="cerrarPanel">
+                                    Cancelar
+                                </Button>
+
+                                <Button size="sm" class="flex-1" @click="guardarCompra" :disabled="loading">
                                     Guardar
                                 </Button>
                             </div>

@@ -6,8 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Categoria;
 use App\Models\GastoFijo;
 use App\Models\Insumo;
+use App\Models\Inversion;
 use App\Models\Producto;
 use App\Models\Variante;
+use App\Services\InversionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -244,6 +246,75 @@ class AdminController extends Controller
         );
 
         return response()->json($gasto);
+    }
+
+    // ── Bebidas e inversiones ────────────────────────────────────────────────
+
+    public function bebidas(InversionService $inversiones): JsonResponse
+    {
+        $categoria = Categoria::bebidas();
+
+        if (! $categoria) {
+            return response()->json(['message' => 'No existe la categoría Bebidas'], 404);
+        }
+
+        $productos = Producto::where('categoria_id', $categoria->id)
+            ->with(['variantes' => fn ($q) => $q->orderBy('orden'), 'variantes.recetas.insumo'])
+            ->orderBy('orden')
+            ->get();
+
+        $insumoIds = $productos->flatMap->variantes->flatMap->recetas->pluck('insumo_id');
+
+        $insumos = Insumo::where('grupo_separacion', 'bebidas')
+            ->orWhereIn('id', $insumoIds)
+            ->orderBy('nombre')
+            ->get();
+
+        return response()->json([
+            'categoria' => $categoria,
+            'productos' => $productos,
+            'insumos' => $insumos,
+            'inversiones' => $categoria->inversiones()->orderByDesc('fecha')->orderByDesc('id')->get(),
+            'recupero' => $inversiones->recupero($categoria),
+        ]);
+    }
+
+    public function crearInversion(Request $request): JsonResponse
+    {
+        $request->validate([
+            'categoria_id' => 'required|exists:categorias,id',
+            'monto' => 'required|numeric|gt:0',
+            'fecha' => 'required|date',
+            'descripcion' => 'nullable|string|max:255',
+        ]);
+
+        $inversion = Inversion::create(
+            $request->only('categoria_id', 'monto', 'fecha', 'descripcion')
+        );
+
+        return response()->json($inversion, 201);
+    }
+
+    public function actualizarInversion(Request $request, Inversion $inversion): JsonResponse
+    {
+        $request->validate([
+            'monto' => 'sometimes|numeric|gt:0',
+            'fecha' => 'sometimes|date',
+            'descripcion' => 'nullable|string|max:255',
+        ]);
+
+        $inversion->update(
+            $request->only('monto', 'fecha', 'descripcion')
+        );
+
+        return response()->json($inversion);
+    }
+
+    public function eliminarInversion(Inversion $inversion): JsonResponse
+    {
+        $inversion->delete();
+
+        return response()->json(['message' => 'Inversión eliminada']);
     }
 
     // ── Variantes con receta ─────────────────────────────────────────────────
