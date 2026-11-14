@@ -30,6 +30,7 @@ interface Venta {
     mesa: string | null;
     notas?: string | null;
     estado: string;
+    tipo_precio?: 'cliente' | 'costo' | 'regalo';
     numero_orden: number;
     total: number;
     detalles: Detalle[];
@@ -802,7 +803,11 @@ onMounted(cargar);
                     >
                         <CardContent class="p-3">
                             <div class="flex items-center justify-between mb-2">
-                                <span class="font-black text-lg">#{{ venta.numero_orden }}</span>
+                                <span class="font-black text-lg">#{{ venta.numero_orden }}<span
+                                    v-if="venta.tipo_precio && venta.tipo_precio !== 'cliente'"
+                                    class="ml-1 text-xs font-normal px-1.5 py-0.5 rounded-full border capitalize"
+                                    :class="venta.tipo_precio === 'regalo' ? 'bg-pink-500/10 text-pink-600 border-pink-500/30' : 'bg-orange-500/10 text-orange-600 border-orange-500/30'"
+                                >{{ venta.tipo_precio }}</span></span>
 
                                 <div class="flex items-center gap-1">
                                     <span class="text-xs font-medium px-2 py-0.5 rounded-full border" :class="estadoColor[venta.estado]">
@@ -909,7 +914,11 @@ onMounted(cargar);
                                 class="border-b last:border-0 hover:bg-muted/50"
                                 :class="venta.estado === 'anulado' ? 'opacity-50' : ''"
                             >
-                                <td class="p-3 font-bold">#{{ venta.numero_orden }}</td>
+                                <td class="p-3 font-bold">#{{ venta.numero_orden }}<span
+                                    v-if="venta.tipo_precio && venta.tipo_precio !== 'cliente'"
+                                    class="ml-1 text-xs font-normal px-1.5 py-0.5 rounded-full border capitalize"
+                                    :class="venta.tipo_precio === 'regalo' ? 'bg-pink-500/10 text-pink-600 border-pink-500/30' : 'bg-orange-500/10 text-orange-600 border-orange-500/30'"
+                                >{{ venta.tipo_precio }}</span></td>
                                 <td class="p-3 text-muted-foreground">{{ horaVenta(venta.created_at) }}</td>
                                 <td class="p-3">{{ venta.mesa ?? '—' }}</td>
                                 <td class="p-3">{{ venta.notas ?? '—' }}</td>
@@ -1396,7 +1405,11 @@ onMounted(cargar);
                                             class="border-b last:border-0 hover:bg-muted/50"
                                             :class="venta.estado === 'anulado' ? 'opacity-50' : ''"
                                         >
-                                            <td class="p-3 font-bold">#{{ venta.numero_orden }}</td>
+                                            <td class="p-3 font-bold">#{{ venta.numero_orden }}<span
+                                    v-if="venta.tipo_precio && venta.tipo_precio !== 'cliente'"
+                                    class="ml-1 text-xs font-normal px-1.5 py-0.5 rounded-full border capitalize"
+                                    :class="venta.tipo_precio === 'regalo' ? 'bg-pink-500/10 text-pink-600 border-pink-500/30' : 'bg-orange-500/10 text-orange-600 border-orange-500/30'"
+                                >{{ venta.tipo_precio }}</span></td>
                                             <td class="p-3 text-muted-foreground">{{ horaVenta(venta.created_at) }}</td>
                                             <td class="p-3">{{ venta.mesa ?? '—' }}</td>
                                             <td class="p-3">

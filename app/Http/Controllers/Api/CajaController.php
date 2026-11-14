@@ -251,21 +251,22 @@ class CajaController extends Controller
             'notas' => 'nullable|string|max:500',
             'estado' => 'nullable|in:pendiente,preparacion,pagado,entregado',
             'descuento' => 'nullable|numeric|min:0',
+            'tipo_precio' => 'nullable|in:cliente,costo,regalo',
 
             'items' => 'required|array|min:1',
             'items.*.variante_id' => 'required|integer|exists:variantes,id',
             'items.*.cantidad' => 'required|integer|min:1',
 
-            'pagos' => 'required|array|min:1',
+            'pagos' => 'required_unless:tipo_precio,regalo|array',
             'pagos.*.metodo' => 'required|in:efectivo,transferencia',
             'pagos.*.monto' => 'required|numeric|min:0',
         ]);
 
         $venta = Venta::registrarEnCaja(
             $caja,
-            $request->only('mesa', 'notas', 'estado', 'descuento'),
+            $request->only('mesa', 'notas', 'estado', 'descuento', 'tipo_precio'),
             $data['items'],
-            $data['pagos'],
+            $data['pagos'] ?? [],
             $user->id
         );
 
@@ -652,14 +653,16 @@ class CajaController extends Controller
             foreach ($data['items'] as $item) {
                 $variante = Variante::with('producto')->find($item['variante_id']);
 
-                $itemSubtotal = $variante->precio_venta * $item['cantidad'];
+                // Se respeta el tipo de precio con el que se hizo el pedido.
+                $precio = Venta::precioUnitario($variante, $venta->tipo_precio ?? 'cliente');
+                $itemSubtotal = $precio * $item['cantidad'];
                 $subtotal += $itemSubtotal;
 
                 DetalleVenta::create([
                     'venta_id' => $venta->id,
                     'variante_id' => $variante->id,
                     'nombre_snapshot' => $variante->producto->nombre.($variante->nombre ? ' — '.$variante->nombre : ''),
-                    'precio_snapshot' => $variante->precio_venta,
+                    'precio_snapshot' => $precio,
                     'costo_snapshot' => $variante->costo_calculado,
                     'cantidad' => $item['cantidad'],
                     'subtotal' => $itemSubtotal,

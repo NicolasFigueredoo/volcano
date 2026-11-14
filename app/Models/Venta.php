@@ -16,6 +16,7 @@ class Venta extends Model
         'user_id',
         'mesa',
         'estado',
+        'tipo_precio',
         'numero_orden',
         'metodo_pago',
         'subtotal',
@@ -35,6 +36,34 @@ class Venta extends Model
     ];
 
     const ESTADOS = ['pendiente', 'preparacion', 'pagado', 'entregado'];
+
+    /** cliente = precio normal, costo = solo el costo, regalo = gratis. */
+    const TIPOS_PRECIO = ['cliente', 'costo', 'regalo'];
+
+    /**
+     * Precio unitario a cobrar de una variante segun el tipo de precio.
+     * El descuento por item (combos) solo aplica al precio de cliente.
+     */
+    public static function precioUnitario(Variante $variante, string $tipoPrecio, float $descuento = 0): float
+    {
+        return match ($tipoPrecio) {
+            'costo' => (float) $variante->costo_calculado,
+            'regalo' => 0.0,
+            default => (float) $variante->precio_venta - $descuento,
+        };
+    }
+
+    /** Metodo de pago resumido a guardar en la venta. */
+    private static function metodoPagoResumen(array $pagos): string
+    {
+        $pagos = array_values(array_filter($pagos, fn ($p) => ($p['monto'] ?? 0) > 0));
+
+        if (count($pagos) === 0) {
+            return 'efectivo';
+        }
+
+        return count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto';
+    }
 
     public function user(): BelongsTo
     {
@@ -108,8 +137,12 @@ class Venta extends Model
                 ->get()
                 ->keyBy('id');
 
+            $tipoPrecio = in_array($data['tipo_precio'] ?? null, self::TIPOS_PRECIO, true)
+                ? $data['tipo_precio']
+                : 'cliente';
+
             $subtotal = collect($items)->sum(
-                fn ($i) => ($variantesMap[$i['variante_id']]->precio_venta - ($i['descuento'] ?? 0)) * $i['cantidad']
+                fn ($i) => self::precioUnitario($variantesMap[$i['variante_id']], $tipoPrecio, (float) ($i['descuento'] ?? 0)) * $i['cantidad']
             );
 
             $caja = Caja::abiertaActual();
@@ -118,7 +151,8 @@ class Venta extends Model
                 throw new \Exception('No hay una caja abierta para registrar ventas.');
             }
 
-            $descuento = $data['descuento'] ?? 0;
+            // El descuento general solo tiene sentido a precio de cliente.
+            $descuento = $tipoPrecio === 'cliente' ? ($data['descuento'] ?? 0) : 0;
             $total = $subtotal - $descuento;
 
             $venta = self::create([
@@ -128,7 +162,8 @@ class Venta extends Model
                 'mesa' => $data['mesa'] ?? null,
                 'estado' => 'pendiente',
                 'numero_orden' => self::proximoNumeroOrden(),
-                'metodo_pago' => count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto',
+                'tipo_precio' => $tipoPrecio,
+                'metodo_pago' => self::metodoPagoResumen($pagos),
                 'subtotal' => $subtotal,
                 'descuento' => $descuento,
                 'total' => $total,
@@ -148,7 +183,7 @@ class Venta extends Model
             // Registrar detalle y descontar stock
             foreach ($items as $item) {
                 $variante = $variantesMap[$item['variante_id']];
-                $precioFinal = $variante->precio_venta - ($item['descuento'] ?? 0);
+                $precioFinal = self::precioUnitario($variante, $tipoPrecio, (float) ($item['descuento'] ?? 0));
 
                 $venta->detalles()->create([
                     'variante_id' => $variante->id,
@@ -206,11 +241,16 @@ class Venta extends Model
                 ->get()
                 ->keyBy('id');
 
+            $tipoPrecio = in_array($data['tipo_precio'] ?? null, self::TIPOS_PRECIO, true)
+                ? $data['tipo_precio']
+                : 'cliente';
+
             $subtotal = collect($items)->sum(
-                fn ($i) => ($variantesMap[$i['variante_id']]->precio_venta - ($i['descuento'] ?? 0)) * $i['cantidad']
+                fn ($i) => self::precioUnitario($variantesMap[$i['variante_id']], $tipoPrecio, (float) ($i['descuento'] ?? 0)) * $i['cantidad']
             );
 
-            $descuento = $data['descuento'] ?? 0;
+            // El descuento general solo tiene sentido a precio de cliente.
+            $descuento = $tipoPrecio === 'cliente' ? ($data['descuento'] ?? 0) : 0;
             $total = $subtotal - $descuento;
 
             $ultimoOrden = self::where('caja_id', $caja->id)->max('numero_orden') ?? 0;
@@ -222,7 +262,8 @@ class Venta extends Model
                 'mesa' => $data['mesa'] ?? null,
                 'estado' => $data['estado'] ?? 'pagado',
                 'numero_orden' => $ultimoOrden + 1,
-                'metodo_pago' => count($pagos) === 1 ? $pagos[0]['metodo'] : 'mixto',
+                'tipo_precio' => $tipoPrecio,
+                'metodo_pago' => self::metodoPagoResumen($pagos),
                 'subtotal' => $subtotal,
                 'descuento' => $descuento,
                 'total' => $total,
@@ -240,7 +281,7 @@ class Venta extends Model
 
             foreach ($items as $item) {
                 $variante = $variantesMap[$item['variante_id']];
-                $precioFinal = $variante->precio_venta - ($item['descuento'] ?? 0);
+                $precioFinal = self::precioUnitario($variante, $tipoPrecio, (float) ($item['descuento'] ?? 0));
 
                 $venta->detalles()->create([
                     'variante_id' => $variante->id,

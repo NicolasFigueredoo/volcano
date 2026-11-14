@@ -11,6 +11,7 @@ interface Variante {
     id: number;
     nombre: string;
     precio_venta: number;
+    costo_calculado: number;
 }
 
 interface Producto {
@@ -33,6 +34,7 @@ interface ComboItem {
         id: number;
         nombre: string;
         precio_venta: number;
+        costo_calculado: number;
         producto: {
             nombre: string;
         };
@@ -54,6 +56,7 @@ interface LineaPedido {
     combo_id?: number;
     nombre: string;
     precio: number;
+    costo: number;
     descuento: number;
     cantidad: number;
 }
@@ -77,11 +80,25 @@ interface Venta {
     mesa: string | null;
     notas: string | null;
     estado: string;
+    tipo_precio?: TipoPrecio;
     numero_orden: number;
     total: number;
     detalles: DetalleVenta[];
     pagos: Pago[];
 }
+
+type TipoPrecio = 'cliente' | 'costo' | 'regalo';
+
+const tiposPrecio: { value: TipoPrecio; label: string }[] = [
+    { value: 'cliente', label: 'Cliente' },
+    { value: 'costo', label: 'Costo' },
+    { value: 'regalo', label: 'Regalo' },
+];
+
+const tipoPrecioBadge: Record<string, string> = {
+    costo: 'bg-orange-500/10 text-orange-600 border-orange-500/30',
+    regalo: 'bg-pink-500/10 text-pink-600 border-pink-500/30',
+};
 
 const { get, post, put, loading, error } = useApi();
 
@@ -99,6 +116,7 @@ const pagoEfectivo = ref(0);
 const pagoTransferencia = ref(0);
 const pagoModo = ref<'total' | 'mixto'>('total');
 const metodoPago = ref<'efectivo' | 'transferencia'>('efectivo');
+const tipoPrecio = ref<TipoPrecio>('cliente');
 
 const mesas = ['Mesa 1', 'Mesa 2', 'Mesa 3', 'Mesa 4', 'Mesa 5', 'Para llevar'];
 
@@ -126,12 +144,19 @@ const categoriaActivaData = computed(() =>
     categorias.value.find(c => c.id === categoriaActiva.value)
 );
 
+// Precio unitario de una línea según el tipo de precio elegido.
+function precioLinea(l: LineaPedido) {
+    if (tipoPrecio.value === 'regalo') return 0;
+    if (tipoPrecio.value === 'costo') return l.costo;
+    return l.precio - l.descuento;
+}
+
 const subtotal = computed(() =>
-    pedido.value.reduce((acc, l) => acc + (l.precio - l.descuento) * l.cantidad, 0)
+    pedido.value.reduce((acc, l) => acc + precioLinea(l) * l.cantidad, 0)
 );
 
 const descuentoMonto = computed(() =>
-    descuento10.value ? Math.round(subtotal.value * 0.1) : 0
+    descuento10.value && tipoPrecio.value === 'cliente' ? Math.round(subtotal.value * 0.1) : 0
 );
 
 const total = computed(() => subtotal.value - descuentoMonto.value);
@@ -179,6 +204,7 @@ function agregarVariante(variante: Variante, nombreProducto: string, descuento =
             variante_id: variante.id,
             nombre: `${nombreProducto} ${variante.nombre}`,
             precio: variante.precio_venta,
+            costo: Number(variante.costo_calculado ?? 0),
             descuento,
             cantidad,
         });
@@ -199,6 +225,10 @@ function agregarCombo(combo: Combo) {
             combo_id: combo.id,
             nombre: `Combo ${combo.nombre}`,
             precio: combo.precio_total,
+            costo: combo.items.reduce(
+                (acc, it) => acc + Number(it.variante.costo_calculado ?? 0) * it.cantidad,
+                0,
+            ),
             descuento: 0,
             cantidad: 1,
         });
@@ -222,9 +252,12 @@ function limpiarPedido() {
     pagoTransferencia.value = 0;
     pagoModo.value = 'total';
     metodoPago.value = 'efectivo';
+    tipoPrecio.value = 'cliente';
 }
 
 function buildPagos() {
+    if (tipoPrecio.value === 'regalo') return [];
+
     if (pagoModo.value === 'mixto') {
         return [
             { metodo: 'efectivo', monto: Number(pagoEfectivo.value) },
@@ -245,7 +278,7 @@ async function cobrar() {
 
     const pagos = buildPagos();
 
-    if (!pagos.length) return;
+    if (!pagos.length && tipoPrecio.value !== 'regalo') return;
 
     const items = pedido.value
         .filter(l => l.tipo === 'variante')
@@ -266,6 +299,7 @@ async function cobrar() {
         mesa: mesa.value || null,
         notas: notas.value || null,
         descuento: descuentoMonto.value,
+        tipo_precio: tipoPrecio.value,
         pagos,
         ...(items.length ? { items } : {}),
         ...(combosPayload.length ? { combos: combosPayload } : {}),
@@ -462,8 +496,15 @@ async function avanzarEstado(venta: Venta) {
                                     </div>
 
                                     <div class="flex items-center justify-between mb-2">
-                                        <span class="text-xs text-muted-foreground">
+                                        <span class="text-xs text-muted-foreground flex items-center gap-1">
                                             {{ pedidoActivo.mesa ?? 'Sin mesa' }}
+                                            <span
+                                                v-if="pedidoActivo.tipo_precio && pedidoActivo.tipo_precio !== 'cliente'"
+                                                class="px-1.5 py-0.5 rounded-full border capitalize"
+                                                :class="tipoPrecioBadge[pedidoActivo.tipo_precio]"
+                                            >
+                                                {{ pedidoActivo.tipo_precio }}
+                                            </span>
                                         </span>
 
                                         <span class="text-xs text-muted-foreground">
@@ -572,7 +613,7 @@ async function avanzarEstado(venta: Venta) {
                                 </div>
 
                                 <span class="text-xs text-muted-foreground w-16 text-right shrink-0">
-                                    {{ fmt((linea.precio - linea.descuento) * linea.cantidad) }}
+                                    {{ fmt(precioLinea(linea) * linea.cantidad) }}
                                 </span>
                             </div>
                         </div>
@@ -599,14 +640,35 @@ async function avanzarEstado(venta: Venta) {
                             </div>
                         </div>
 
-                        <label class="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                        <div class="grid grid-cols-3 gap-1">
+                            <button
+                                v-for="t in tiposPrecio"
+                                :key="t.value"
+                                @click="tipoPrecio = t.value"
+                                class="text-xs py-1 rounded border transition-colors"
+                                :class="tipoPrecio === t.value
+                                    ? 'bg-primary text-primary-foreground border-primary'
+                                    : 'border-input hover:bg-muted'"
+                            >
+                                {{ t.label }}
+                            </button>
+                        </div>
+
+                        <label
+                            v-if="tipoPrecio === 'cliente'"
+                            class="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer"
+                        >
                             <input type="checkbox" v-model="descuento10" class="rounded" />
                             Descuento 10%
                         </label>
 
                         <Separator />
 
-                        <div class="flex flex-col gap-2">
+                        <p v-if="tipoPrecio === 'regalo'" class="text-xs text-muted-foreground text-center">
+                            Regalo: no se cobra nada.
+                        </p>
+
+                        <div v-else class="flex flex-col gap-2">
                             <div class="flex gap-2">
                                 <button
                                     @click="pagoModo = 'total'"

@@ -26,17 +26,17 @@ class PosController extends Controller
             ->with(['items.variante.producto'])
             ->get()
             ->map(fn ($c) => [
-                'id'           => $c->id,
-                'nombre'       => $c->nombre,
-                'descripcion'  => $c->descripcion,
+                'id' => $c->id,
+                'nombre' => $c->nombre,
+                'descripcion' => $c->descripcion,
                 'precio_total' => $c->precio_total,
-                'ahorro'       => $c->ahorro,
-                'items'        => $c->items,
+                'ahorro' => $c->ahorro,
+                'items' => $c->items,
             ]);
 
         return response()->json([
             'categorias' => $categorias,
-            'combos'     => $combos,
+            'combos' => $combos,
         ]);
     }
 
@@ -44,29 +44,31 @@ class PosController extends Controller
     public function registrarVenta(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'mesa'                => 'nullable|string|max:50',
-            'descuento'           => 'nullable|numeric|min:0',
-            'notas'               => 'nullable|string',
+            'mesa' => 'nullable|string|max:50',
+            'descuento' => 'nullable|numeric|min:0',
+            'notas' => 'nullable|string',
+            'tipo_precio' => 'nullable|in:cliente,costo,regalo',
 
-            'pagos'               => 'required|array|min:1',
-            'pagos.*.metodo'      => 'required|in:efectivo,transferencia',
-            'pagos.*.monto'       => 'required|numeric|min:0',
+            // Un regalo no tiene cobro, puede venir sin pagos.
+            'pagos' => 'required_unless:tipo_precio,regalo|array',
+            'pagos.*.metodo' => 'required|in:efectivo,transferencia',
+            'pagos.*.monto' => 'required|numeric|min:0',
 
-            'items'               => 'required_without:combos|array|min:1',
+            'items' => 'required_without:combos|array|min:1',
             'items.*.variante_id' => 'required|exists:variantes,id',
-            'items.*.cantidad'    => 'required|integer|min:1',
-            'items.*.descuento'   => 'nullable|numeric|min:0',
+            'items.*.cantidad' => 'required|integer|min:1',
+            'items.*.descuento' => 'nullable|numeric|min:0',
 
-            'combos'              => 'required_without:items|array|min:1',
-            'combos.*.combo_id'   => 'required|exists:combos,id',
-            'combos.*.cantidad'   => 'required|integer|min:1',
+            'combos' => 'required_without:items|array|min:1',
+            'combos.*.combo_id' => 'required|exists:combos,id',
+            'combos.*.cantidad' => 'required|integer|min:1',
         ]);
 
         $items = collect($data['items'] ?? [])
             ->map(fn ($item) => [
                 'variante_id' => $item['variante_id'],
-                'cantidad'    => $item['cantidad'],
-                'descuento'   => $item['descuento'] ?? 0,
+                'cantidad' => $item['cantidad'],
+                'descuento' => $item['descuento'] ?? 0,
             ]);
 
         $comboRequests = collect($data['combos'] ?? []);
@@ -96,21 +98,21 @@ class PosController extends Controller
                 foreach ($combo->items as $comboItem) {
                     $items->push([
                         'variante_id' => $comboItem->variante_id,
-                        'cantidad'    => $comboItem->cantidad * $cantidadCombo,
-                        'descuento'   => $comboItem->descuento,
+                        'cantidad' => $comboItem->cantidad * $cantidadCombo,
+                        'descuento' => $comboItem->descuento,
                     ]);
                 }
             }
         }
 
         $venta = Venta::registrar(
-            $request->only('mesa', 'descuento', 'notas'),
+            $request->only('mesa', 'descuento', 'notas', 'tipo_precio'),
             $items->values()->all(),
-            $data['pagos'],
+            $data['pagos'] ?? [],
             Auth::id()
         );
 
-        if (!$venta->estado) {
+        if (! $venta->estado) {
             $venta->update(['estado' => 'pendiente']);
         }
 
@@ -143,13 +145,13 @@ class PosController extends Controller
         $nuevo = $request->estado;
 
         $permitidas = [
-            'pendiente'   => ['preparacion'],
+            'pendiente' => ['preparacion'],
             'preparacion' => ['pagado'],
-            'pagado'      => ['entregado'],
-            'entregado'   => [],
+            'pagado' => ['entregado'],
+            'entregado' => [],
         ];
 
-        if (!in_array($nuevo, $permitidas[$actual] ?? [], true)) {
+        if (! in_array($nuevo, $permitidas[$actual] ?? [], true)) {
             return response()->json([
                 'message' => "No se puede pasar de {$actual} a {$nuevo}.",
             ], 422);
