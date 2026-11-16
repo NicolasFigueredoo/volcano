@@ -91,6 +91,9 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::post('inversiones', [AdminController::class, 'crearInversion']);
         Route::put('inversiones/{inversion}', [AdminController::class, 'actualizarInversion']);
         Route::delete('inversiones/{inversion}', [AdminController::class, 'eliminarInversion']);
+
+        // Resumen en texto (Markdown) para pasarle a Claude
+        Route::get('exportar-resumen', [AdminController::class, 'exportarResumen']);
     });
 
     // ── Separación de insumos ─────────────────────────────────────

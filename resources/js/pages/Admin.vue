@@ -4,9 +4,44 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useApi } from '@/composables/useApi';
 import { onMounted, ref, computed } from 'vue';
-import { Plus, Pencil, Trash2, X, ChevronDown, ChevronUp } from 'lucide-vue-next';
+import { Plus, Pencil, Trash2, X, ChevronDown, ChevronUp, ClipboardCopy } from 'lucide-vue-next';
 
 const { get, post, put, del, loading } = useApi();
+
+// ── Exportar resumen para Claude ─────────────────────────────────────────────
+const exportando = ref(false);
+const exportMsg = ref('');
+
+async function exportarParaClaude() {
+    exportando.value = true;
+    exportMsg.value = 'Generando...';
+
+    try {
+        const data = await get<{ texto: string }>('/api/admin/exportar-resumen?dias=30');
+        if (!data?.texto) {
+            exportMsg.value = 'Error al generar';
+            return;
+        }
+
+        // Se descarga siempre como .md y además se intenta copiar.
+        const blob = new Blob([data.texto], { type: 'text/markdown;charset=utf-8' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `resumen-volcano-${new Date().toISOString().slice(0, 10)}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+
+        try {
+            await navigator.clipboard.writeText(data.texto);
+            exportMsg.value = '✓ Copiado y descargado';
+        } catch {
+            exportMsg.value = '✓ Descargado';
+        }
+    } finally {
+        exportando.value = false;
+        setTimeout(() => (exportMsg.value = ''), 3000);
+    }
+}
 
 const tab = ref<'productos' | 'combos' | 'insumos' | 'gastos' | 'bebidas'>('productos');
 const categorias = ref<any[]>([]);
@@ -484,6 +519,18 @@ const margenActual = computed(() => {
                         @click="tab = k as any"
                     >
                         {{ v }}
+                    </Button>
+
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        class="ml-auto"
+                        :disabled="exportando"
+                        title="Copia precios, costos, márgenes, recetas, gastos y ventas de los últimos 30 días para pegarle a Claude"
+                        @click="exportarParaClaude"
+                    >
+                        <ClipboardCopy class="w-4 h-4 mr-1" />
+                        {{ exportMsg || 'Exportar para Claude' }}
                     </Button>
                 </div>
 
