@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Categoria;
+use App\Models\Insumo;
 use App\Models\Producto;
 use App\Models\Variante;
 use App\Models\Venta;
@@ -71,4 +72,26 @@ it('registra un regalo sin pagos y en cero', function () {
         ->and((float) $venta->total)->toBe(0.0)
         ->and($venta->pagos)->toHaveCount(0)
         ->and((float) $venta->detalles->first()->costo_snapshot)->toBe(400.0);
+});
+
+it('vende una quintuple como triple + 2 patty extra', function () {
+    $carne = Insumo::create(['nombre' => 'Carne', 'unidad' => 'medallón', 'costo_unitario' => 1500, 'stock_actual' => 50, 'descuenta_stock' => true]);
+    $categoria = Categoria::create(['nombre' => 'Burgers']);
+    $producto = Producto::create(['categoria_id' => $categoria->id, 'nombre' => 'Volcano']);
+    $triple = $producto->variantes()->create(['nombre' => 'Triple', 'precio_venta' => 14000, 'activo' => true]);
+    $triple->recetas()->create(['insumo_id' => $carne->id, 'cantidad' => 3]);
+    $extra = $producto->variantes()->create(['nombre' => 'Patty extra', 'precio_venta' => 2000, 'activo' => true, 'es_extra' => true]);
+    $extra->recetas()->create(['insumo_id' => $carne->id, 'cantidad' => 1]);
+    $extra->recalcularCosto();
+
+    abrirCajaYVender([
+        'items' => [
+            ['variante_id' => $triple->id, 'cantidad' => 1],
+            ['variante_id' => $extra->id, 'cantidad' => 2],
+        ],
+        'pagos' => [['metodo' => 'efectivo', 'monto' => 18000]],
+    ])->assertCreated();
+
+    expect((float) Venta::first()->total)->toBe(18000.0)
+        ->and((float) $carne->fresh()->stock_actual)->toBe(45.0);
 });

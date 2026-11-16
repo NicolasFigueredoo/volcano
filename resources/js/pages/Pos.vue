@@ -12,6 +12,7 @@ interface Variante {
     nombre: string;
     precio_venta: number;
     costo_calculado: number;
+    es_extra?: boolean;
 }
 
 interface Producto {
@@ -53,6 +54,9 @@ interface Combo {
 interface LineaPedido {
     tipo: 'variante' | 'combo';
     variante_id?: number;
+    producto_id?: number;
+    nombre_producto?: string;
+    es_extra?: boolean;
     combo_id?: number;
     nombre: string;
     precio: number;
@@ -189,7 +193,48 @@ onMounted(async () => {
     await cargarPedidosActivos();
 });
 
-function agregarVariante(variante: Variante, nombreProducto: string, descuento = 0, cantidad = 1) {
+// Variante "Patty extra" de cada producto (no se muestra en la grilla).
+const extraPorProducto = computed(() => {
+    const map: Record<number, Variante> = {};
+    for (const c of categorias.value) {
+        for (const p of c.productos) {
+            const extra = p.variantes.find(v => v.es_extra);
+            if (extra) map[p.id] = extra;
+        }
+    }
+    return map;
+});
+
+const variantesVisibles = (p: Producto) => p.variantes.filter(v => !v.es_extra);
+
+function agregarPatty(index: number) {
+    const linea = pedido.value[index];
+    if (!linea?.producto_id) return;
+    const extra = extraPorProducto.value[linea.producto_id];
+    if (!extra) return;
+
+    const existente = pedido.value.find(l => l.tipo === 'variante' && l.variante_id === extra.id);
+    if (existente) {
+        existente.cantidad++;
+        return;
+    }
+
+    // Se inserta justo debajo de la burger para que se lea como un solo item.
+    pedido.value.splice(index + 1, 0, {
+        tipo: 'variante',
+        variante_id: extra.id,
+        producto_id: linea.producto_id,
+        nombre_producto: linea.nombre_producto,
+        es_extra: true,
+        nombre: `${linea.nombre_producto ?? ''} ${extra.nombre}`,
+        precio: extra.precio_venta,
+        costo: Number(extra.costo_calculado ?? 0),
+        descuento: 0,
+        cantidad: 1,
+    });
+}
+
+function agregarVariante(variante: Variante, nombreProducto: string, descuento = 0, cantidad = 1, productoId?: number) {
     const existente = pedido.value.find(l =>
         l.tipo === 'variante' &&
         l.variante_id === variante.id &&
@@ -202,6 +247,9 @@ function agregarVariante(variante: Variante, nombreProducto: string, descuento =
         pedido.value.push({
             tipo: 'variante',
             variante_id: variante.id,
+            producto_id: productoId,
+            nombre_producto: nombreProducto,
+            es_extra: !!variante.es_extra,
             nombre: `${nombreProducto} ${variante.nombre}`,
             precio: variante.precio_venta,
             costo: Number(variante.costo_calculado ?? 0),
@@ -375,10 +423,10 @@ async function avanzarEstado(venta: Venta) {
                                 :key="producto.id"
                             >
                                 <Card
-                                    v-for="variante in producto.variantes"
+                                    v-for="variante in variantesVisibles(producto)"
                                     :key="variante.id"
                                     class="cursor-pointer hover:border-primary transition-colors"
-                                    @click="agregarVariante(variante, producto.nombre)"
+                                    @click="agregarVariante(variante, producto.nombre, 0, 1, producto.id)"
                                 >
                                     <CardContent class="p-3">
                                         <p class="font-medium text-sm leading-tight">
@@ -588,8 +636,16 @@ async function avanzarEstado(venta: Venta) {
                                 :key="i"
                                 class="flex items-center gap-2"
                             >
-                                <span class="flex-1 text-xs leading-tight">
-                                    {{ linea.nombre }}
+                                <span class="flex-1 text-xs leading-tight" :class="linea.es_extra ? 'pl-2 text-muted-foreground' : ''">
+                                    <template v-if="linea.es_extra">+ </template>{{ linea.nombre }}
+                                    <button
+                                        v-if="!linea.es_extra && linea.producto_id && extraPorProducto[linea.producto_id]"
+                                        class="ml-1 px-1.5 py-0.5 rounded border text-[10px] hover:bg-muted"
+                                        title="Agregar un patty extra"
+                                        @click="agregarPatty(i)"
+                                    >
+                                        + Patty
+                                    </button>
                                 </span>
 
                                 <div class="flex items-center gap-1 shrink-0">

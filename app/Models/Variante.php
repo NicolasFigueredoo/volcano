@@ -14,14 +14,16 @@ class Variante extends Model
         'precio_venta',
         'costo_calculado',
         'activo',
+        'es_extra',
         'orden',
     ];
 
     protected $casts = [
-        'precio_venta'    => 'decimal:2',
+        'precio_venta' => 'decimal:2',
         'costo_calculado' => 'decimal:2',
-        'activo'          => 'boolean',
-        'orden'           => 'integer',
+        'activo' => 'boolean',
+        'es_extra' => 'boolean',
+        'orden' => 'integer',
     ];
 
     // ── Relationships ────────────────────────────────────────────────────────
@@ -52,7 +54,10 @@ class Variante extends Model
 
     public function getMargenAttribute(): float
     {
-        if ($this->precio_venta <= 0) return 0;
+        if ($this->precio_venta <= 0) {
+            return 0;
+        }
+
         return round(($this->precio_venta - $this->costo_calculado) / $this->precio_venta * 100, 1);
     }
 
