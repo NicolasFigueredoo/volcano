@@ -235,5 +235,5 @@ it('solo permite el acceso a los administradores', function () {
 it('rechaza un grupo inexistente', function () {
     $admin = usuarioConRol('admin');
 
-    $this->actingAs($admin)->postJson('/api/separacion/chorizo/reponer', [])->assertStatus(422);
+    $this->actingAs($admin)->postJson('/api/separacion/inexistente/reponer', [])->assertStatus(422);
 });

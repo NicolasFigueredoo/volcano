@@ -33,6 +33,10 @@ class Insumo extends Model
         'panceta',
         'descartables',
         'bebidas',
+        'vacio',
+        'bondiola',
+        'chorizo',
+        'pan_sanguche',
         'varios',
     ];
 
@@ -44,6 +48,10 @@ class Insumo extends Model
         'panceta' => 'Panceta',
         'descartables' => 'Descartables',
         'bebidas' => 'Bebidas',
+        'vacio' => 'Vacío (parrilla)',
+        'bondiola' => 'Bondiola',
+        'chorizo' => 'Chorizo',
+        'pan_sanguche' => 'Pan de sanguche',
         'varios' => 'Varios',
     ];
 

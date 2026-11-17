@@ -243,12 +243,14 @@ class AdminController extends Controller
         $request->validate([
             'nombre' => 'required|string|max:100',
             'negocio' => 'sometimes|in:'.implode(',', GastoFijo::NEGOCIOS),
-            'monto_mensual' => 'required|numeric|min:0',
+            'periodicidad' => 'sometimes|in:'.implode(',', GastoFijo::PERIODICIDADES),
+            'monto_jornada' => 'required_if:periodicidad,jornada|nullable|numeric|min:0',
+            'monto_mensual' => 'required_unless:periodicidad,jornada|numeric|min:0',
             'dias_apertura_mes' => 'required|integer|min:1|max:31',
         ]);
 
         $gasto = GastoFijo::create(
-            $request->only('nombre', 'negocio', 'monto_mensual', 'dias_apertura_mes')
+            $request->only('nombre', 'negocio', 'periodicidad', 'monto_jornada', 'monto_mensual', 'dias_apertura_mes')
         );
 
         return response()->json($gasto, 201);
@@ -259,13 +261,15 @@ class AdminController extends Controller
         $request->validate([
             'nombre' => 'sometimes|string|max:100',
             'negocio' => 'sometimes|in:'.implode(',', GastoFijo::NEGOCIOS),
+            'periodicidad' => 'sometimes|in:'.implode(',', GastoFijo::PERIODICIDADES),
+            'monto_jornada' => 'required_if:periodicidad,jornada|nullable|numeric|min:0',
             'monto_mensual' => 'sometimes|numeric|min:0',
             'dias_apertura_mes' => 'sometimes|integer|min:1|max:31',
             'activo' => 'boolean',
         ]);
 
         $gasto->update(
-            $request->only('nombre', 'negocio', 'monto_mensual', 'dias_apertura_mes', 'activo')
+            $request->only('nombre', 'negocio', 'periodicidad', 'monto_jornada', 'monto_mensual', 'dias_apertura_mes', 'activo')
         );
 
         return response()->json($gasto);

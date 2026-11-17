@@ -36,6 +36,9 @@ function desgloseDeHoy(): array
 }
 
 beforeEach(function () {
+    // La migración carga los gastos de la parrilla; acá se arma un escenario propio.
+    GastoFijo::query()->delete();
+
     GastoFijo::create(['nombre' => 'Alquiler', 'negocio' => 'compartido', 'monto_mensual' => 32000, 'dias_apertura_mes' => 16]);
     GastoFijo::create(['nombre' => 'Delivery', 'negocio' => 'burger', 'monto_mensual' => 20000, 'dias_apertura_mes' => 1]);
     GastoFijo::create(['nombre' => 'Parrillero', 'negocio' => 'parrilla', 'monto_mensual' => 30000, 'dias_apertura_mes' => 1]);
@@ -106,4 +109,23 @@ it('el admin puede cambiar el negocio de una categoría', function () {
     $this->actingAs(usuarioConRol('admin'))
         ->putJson("/api/admin/categorias/{$categoria->id}", ['negocio' => 'otro'])
         ->assertUnprocessable();
+});
+
+it('un gasto por jornada se descuenta entero cada día', function () {
+    $gasto = GastoFijo::create([
+        'nombre' => 'Carbón',
+        'negocio' => 'parrilla',
+        'periodicidad' => 'jornada',
+        'monto_jornada' => 3500,
+        'dias_apertura_mes' => 16,
+    ]);
+
+    expect($gasto->costo_diario)->toEqual(3500.0)
+        ->and((float) $gasto->monto_mensual)->toEqual(56000.0);
+
+    $this->actingAs(usuarioConRol('admin'))
+        ->putJson("/api/admin/gastos-fijos/{$gasto->id}", ['periodicidad' => 'jornada', 'monto_jornada' => 4000])
+        ->assertOk();
+
+    expect($gasto->fresh()->costo_diario)->toEqual(4000.0);
 });

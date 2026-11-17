@@ -100,6 +100,10 @@ const GRUPOS_SEPARACION: [string, string][] = [
     ['panceta', 'Panceta'],
     ['descartables', 'Descartables'],
     ['bebidas', 'Bebidas'],
+    ['vacio', 'Vacío (parrilla)'],
+    ['bondiola', 'Bondiola'],
+    ['chorizo', 'Chorizo'],
+    ['pan_sanguche', 'Pan de sanguche'],
     ['varios', 'Varios'],
 ];
 
@@ -120,6 +124,8 @@ const fCategoria = ref({
 const fGasto = ref({
     nombre: '',
     negocio: 'compartido',
+    periodicidad: 'mensual',
+    monto_jornada: 0,
     monto_mensual: 0,
     dias_apertura_mes: 16,
     activo: true,
@@ -193,10 +199,13 @@ const productosPorCategoria = computed(() =>
     }))
 );
 
+const gastoPorDia = (g: any) =>
+    g.periodicidad === 'jornada' ? Number(g.monto_jornada) : Number(g.monto_mensual) / Number(g.dias_apertura_mes);
+
 const totalGastosDia = computed(() =>
     gastos.value
         .filter(g => g.activo)
-        .reduce((acc: number, g: any) => acc + (Number(g.monto_mensual) / Number(g.dias_apertura_mes)), 0)
+        .reduce((acc: number, g: any) => acc + gastoPorDia(g), 0)
 );
 
 function abrirPanel(tipo: string, data: any = null) {
@@ -237,6 +246,8 @@ function abrirPanel(tipo: string, data: any = null) {
         fGasto.value = {
             nombre: data?.nombre ?? '',
             negocio: data?.negocio ?? 'compartido',
+            periodicidad: data?.periodicidad ?? 'mensual',
+            monto_jornada: Number(data?.monto_jornada ?? 0),
             monto_mensual: Number(data?.monto_mensual ?? 0),
             dias_apertura_mes: Number(data?.dias_apertura_mes ?? 16),
             activo: data?.activo ?? true,
@@ -888,8 +899,8 @@ const margenActual = computed(() => {
                                     <tr class="border-b text-xs text-muted-foreground">
                                         <th class="text-left p-3 font-medium">Nombre</th>
                                         <th class="text-left p-3 font-medium">Negocio</th>
-                                        <th class="text-right p-3 font-medium">Mensual</th>
-                                        <th class="text-right p-3 font-medium">Días</th>
+                                        <th class="text-right p-3 font-medium">Monto</th>
+                                        <th class="text-right p-3 font-medium">Días/mes</th>
                                         <th class="text-right p-3 font-medium">Por día</th>
                                         <th class="text-center p-3 font-medium">Activo</th>
                                         <th class="p-3"></th>
@@ -916,8 +927,15 @@ const margenActual = computed(() => {
                                             </span>
                                         </td>
 
-                                        <td class="p-3 text-right">
-                                            {{ fmt(g.monto_mensual) }}
+                                        <td class="p-3 text-right whitespace-nowrap">
+                                            <template v-if="g.periodicidad === 'jornada'">
+                                                {{ fmt(g.monto_jornada) }}
+                                                <span class="text-xs text-muted-foreground">/jornada</span>
+                                            </template>
+                                            <template v-else>
+                                                {{ fmt(g.monto_mensual) }}
+                                                <span class="text-xs text-muted-foreground">/mes</span>
+                                            </template>
                                         </td>
 
                                         <td class="p-3 text-right text-muted-foreground">
@@ -925,7 +943,7 @@ const margenActual = computed(() => {
                                         </td>
 
                                         <td class="p-3 text-right font-medium">
-                                            {{ fmt(Number(g.monto_mensual) / Number(g.dias_apertura_mes)) }}
+                                            {{ fmt(gastoPorDia(g)) }}
                                         </td>
 
                                         <td class="p-3 text-center">
@@ -1537,6 +1555,39 @@ const margenActual = computed(() => {
                             </div>
 
                             <div>
+                                <label class="text-xs text-muted-foreground">¿Cada cuánto se paga?</label>
+                                <div class="grid grid-cols-2 gap-2 mt-1">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        :variant="fGasto.periodicidad === 'jornada' ? 'default' : 'outline'"
+                                        @click="fGasto.periodicidad = 'jornada'"
+                                    >
+                                        Por jornada
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        :variant="fGasto.periodicidad === 'mensual' ? 'default' : 'outline'"
+                                        @click="fGasto.periodicidad = 'mensual'"
+                                    >
+                                        Por mes
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div v-if="fGasto.periodicidad === 'jornada'">
+                                <label class="text-xs text-muted-foreground">Monto por jornada</label>
+                                <input
+                                    type="number"
+                                    v-model="fGasto.monto_jornada"
+                                    min="0"
+                                    class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                />
+                                <p class="text-xs text-muted-foreground mt-1">Se descuenta entero cada día que abrís (ej. carbón, parrillero).</p>
+                            </div>
+
+                            <div v-else>
                                 <label class="text-xs text-muted-foreground">Monto mensual</label>
                                 <input
                                     type="number"
@@ -1544,6 +1595,7 @@ const margenActual = computed(() => {
                                     min="0"
                                     class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
                                 />
+                                <p class="text-xs text-muted-foreground mt-1">Se reparte entre los días que abrís en el mes (ej. alquiler).</p>
                             </div>
 
                             <div>
