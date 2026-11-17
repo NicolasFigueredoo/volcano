@@ -11,8 +11,9 @@ return new class extends Migration
 {
     /**
      * Fusión burger + parrilla: cada categoría pertenece a un negocio
-     * (burger, parrilla o general para lo que comparten los dos: bebidas y
-     * delivery),
+     * (burger, parrilla o general para lo que comparten los dos: el
+     * delivery). Bebidas y papas quedan en la burger, que es la que las compra
+     * y ya las lleva con su propio sector.
      * cada línea vendida guarda el negocio que tenía al momento de la venta, y
      * cada gasto fijo es de un negocio o compartido.
      *
@@ -33,10 +34,8 @@ return new class extends Migration
             $table->string('negocio', 20)->default('compartido')->after('nombre');
         });
 
-        // Bebidas y delivery los venden los dos negocios. Las papas
-        // (adicionales) quedan en la burger, que es la que las compra.
-        Categoria::whereRaw('LOWER(nombre) LIKE ?', ['%bebida%'])
-            ->orWhereRaw('LOWER(nombre) = ?', ['delivery'])
+        // El delivery lo usan los dos negocios.
+        Categoria::whereRaw('LOWER(nombre) = ?', ['delivery'])
             ->update(['negocio' => 'general']);
 
         // Las ventas viejas toman el negocio actual de su categoría.

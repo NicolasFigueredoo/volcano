@@ -88,7 +88,7 @@ function clase(tono: string | undefined, valor: number) {
                 </tbody>
             </table>
             <p class="px-3 pb-3 pt-1 text-xs text-muted-foreground">
-                Compartido = bebidas y envíos, que venden los dos negocios. El alquiler y los gastos compartidos se
+                Compartido = envíos (el delivery lo usan los dos negocios). El alquiler y los gastos compartidos se
                 reparten mitad y mitad entre burger y parrilla (si uno no vendió ese día, lo paga el otro).
             </p>
         </CardContent>
