@@ -111,7 +111,7 @@ const { get, post, put, loading, error } = useApi();
 
 const categorias = ref<Categoria[]>([]);
 const combos = ref<Combo[]>([]);
-const categoriaActiva = ref<number | 'combos' | null>(null);
+const categoriaActiva = ref<number | null>(null);
 const pedido = ref<LineaPedido[]>([]);
 const pedidosActivos = ref<Venta[]>([]);
 
@@ -127,25 +127,29 @@ const tipoPrecio = ref<TipoPrecio>('cliente');
 
 const mesas = ['Mesa 1', 'Mesa 2', 'Mesa 3', 'Mesa 4', 'Mesa 5', 'Para llevar'];
 
-const negocioActivo = ref<'burger' | 'parrilla'>('burger');
 const masOpciones = ref(false);
 const ultimoNumero = ref<number | null>(null);
 
-const NEGOCIOS_TABS: { value: 'burger' | 'parrilla'; label: string }[] = [
-    { value: 'burger', label: '🍔 Burger' },
-    { value: 'parrilla', label: '🔥 Parrilla' },
-];
-
 const negocioDe = (c: Categoria): Negocio => c.negocio ?? 'burger';
 
-// Pestañas: solo los negocios que tienen algo para vender.
-const tabsNegocio = computed(() =>
-    NEGOCIOS_TABS.filter(t => categorias.value.some(c => negocioDe(c) === t.value && c.productos.length)),
-);
+// Cada categoría es una pestaña grande en una sola fila (Burger, Parrilla,
+// Papas fritas, Bebidas). El envío no: va como botones fijos en el pedido.
+const tabs = computed(() => categorias.value.filter(c => negocioDe(c) !== 'general' && c.productos.length));
 
-const categoriasDelNegocio = computed(() =>
-    categorias.value.filter(c => negocioDe(c) === negocioActivo.value && c.productos.length),
-);
+const EMOJIS: [string, string][] = [
+    ['burger', '🍔'],
+    ['parrilla', '🔥'],
+    ['papa', '🍟'],
+    ['bebida', '🥤'],
+];
+
+function emojiTab(c: Categoria) {
+    const nombre = c.nombre.toLowerCase();
+    return EMOJIS.find(([clave]) => nombre.includes(clave))?.[1] ?? '';
+}
+
+// Los combos se muestran dentro de la primera pestaña de la burger.
+const categoriaConCombos = computed(() => tabs.value.find(c => negocioDe(c) === 'burger')?.id ?? null);
 
 // Lo compartido (envío) no va en la grilla: son botones fijos en el pedido.
 const variantesEnvio = computed(() =>
@@ -153,11 +157,6 @@ const variantesEnvio = computed(() =>
         .filter(c => negocioDe(c) === 'general')
         .flatMap(c => c.productos.flatMap(p => p.variantes.map(v => ({ variante: v, producto: p })))),
 );
-
-function elegirNegocio(n: 'burger' | 'parrilla') {
-    negocioActivo.value = n;
-    categoriaActiva.value = categoriasDelNegocio.value[0]?.id ?? null;
-}
 
 function cantidadEnPedido(varianteId: number) {
     return pedido.value
@@ -221,8 +220,7 @@ async function cargarMenu() {
     if (data) {
         categorias.value = data.categorias;
         combos.value = data.combos;
-        elegirNegocio(tabsNegocio.value[0]?.value ?? 'burger');
-        if (categoriaActiva.value === null && data.combos.length) categoriaActiva.value = 'combos';
+        categoriaActiva.value = tabs.value[0]?.id ?? null;
     }
 }
 
@@ -443,47 +441,19 @@ async function avanzarEstado(venta: Venta) {
 
         <div class="flex h-[calc(100vh-4rem)] gap-4 p-4 overflow-hidden">
             <div class="flex flex-col flex-1 gap-3 min-w-0 overflow-hidden text-foreground">
-                <!-- Negocio -->
-                <div v-if="tabsNegocio.length > 1" class="grid grid-cols-2 gap-2">
+                <!-- Pestañas: una por categoría, todas en una fila -->
+                <div class="grid gap-2" :style="{ gridTemplateColumns: `repeat(${Math.max(tabs.length, 1)}, minmax(0, 1fr))` }">
                     <button
-                        v-for="t in tabsNegocio"
-                        :key="t.value"
-                        class="h-14 rounded-xl border-2 text-xl font-bold transition-colors"
-                        :class="negocioActivo === t.value
-                            ? 'bg-primary text-primary-foreground border-primary'
-                            : 'border-input text-foreground hover:bg-muted'"
-                        @click="elegirNegocio(t.value)"
-                    >
-                        {{ t.label }}
-                    </button>
-                </div>
-
-                <!-- Categorías del negocio (solo si hay más de una) -->
-                <div
-                    v-if="categoriasDelNegocio.length > 1 || (negocioActivo === 'burger' && combos.length)"
-                    class="flex gap-2 flex-wrap"
-                >
-                    <button
-                        v-for="cat in categoriasDelNegocio"
+                        v-for="cat in tabs"
                         :key="cat.id"
-                        class="h-11 px-4 rounded-lg border text-base font-medium transition-colors"
-                        :class="cat.id === categoriaActiva
-                            ? 'bg-foreground text-background border-foreground'
+                        class="h-16 px-1 rounded-xl border-2 flex flex-col items-center justify-center transition-colors"
+                        :class="categoriaActiva === cat.id
+                            ? 'bg-primary text-primary-foreground border-primary'
                             : 'border-input text-foreground hover:bg-muted'"
                         @click="categoriaActiva = cat.id"
                     >
-                        {{ cat.nombre }}
-                    </button>
-
-                    <button
-                        v-if="negocioActivo === 'burger' && combos.length"
-                        class="h-11 px-4 rounded-lg border text-base font-medium transition-colors"
-                        :class="categoriaActiva === 'combos'
-                            ? 'bg-foreground text-background border-foreground'
-                            : 'border-input text-foreground hover:bg-muted'"
-                        @click="categoriaActiva = 'combos'"
-                    >
-                        Combos
+                        <span v-if="emojiTab(cat)" class="text-2xl leading-none">{{ emojiTab(cat) }}</span>
+                        <span class="text-base font-bold leading-tight whitespace-nowrap">{{ cat.nombre }}</span>
                     </button>
                 </div>
 
@@ -492,13 +462,41 @@ async function avanzarEstado(venta: Venta) {
                 </div>
 
                 <div v-else class="flex flex-col gap-4 min-h-0 overflow-y-auto pr-1">
-                    <!-- Productos -->
-                    <div
-                        v-if="categoriaActiva !== 'combos'"
-                        class="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3"
-                    >
-                        <template v-if="categoriaActivaData">
-                            <template v-for="producto in categoriaActivaData.productos" :key="producto.id">
+                    <!-- Productos: si tiene varios tamaños, una tarjeta con un botón por tamaño -->
+                    <div v-if="categoriaActivaData" class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+                        <template v-for="producto in categoriaActivaData.productos" :key="producto.id">
+                            <div
+                                v-if="variantesVisibles(producto).length > 1"
+                                class="rounded-xl border-2 border-border bg-card text-card-foreground p-3 flex flex-col gap-2"
+                            >
+                                <p class="text-xl font-bold leading-tight">{{ producto.nombre }}</p>
+
+                                <div
+                                    class="grid gap-2"
+                                    :style="{ gridTemplateColumns: `repeat(${variantesVisibles(producto).length}, minmax(0, 1fr))` }"
+                                >
+                                    <button
+                                        v-for="variante in variantesVisibles(producto)"
+                                        :key="variante.id"
+                                        class="relative rounded-lg border-2 py-2.5 px-1 flex flex-col items-center transition-colors active:scale-[0.97]"
+                                        :class="cantidadEnPedido(variante.id)
+                                            ? 'border-primary bg-primary/10'
+                                            : 'border-input hover:border-primary/60'"
+                                        @click="agregarVariante(variante, producto.nombre, 0, 1, producto.id)"
+                                    >
+                                        <span
+                                            v-if="cantidadEnPedido(variante.id)"
+                                            class="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-primary text-primary-foreground text-sm font-bold flex items-center justify-center"
+                                        >
+                                            {{ cantidadEnPedido(variante.id) }}
+                                        </span>
+                                        <span class="text-base font-semibold">{{ variante.nombre }}</span>
+                                        <span class="text-sm text-muted-foreground">{{ fmt(variante.precio_venta) }}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <template v-else>
                                 <button
                                     v-for="variante in variantesVisibles(producto)"
                                     :key="variante.id"
@@ -514,7 +512,7 @@ async function avanzarEstado(venta: Venta) {
                                     </span>
 
                                     <span>
-                                        <span class="block text-lg font-semibold leading-tight pr-10">{{ producto.nombre }}</span>
+                                        <span class="block text-xl font-bold leading-tight pr-10">{{ producto.nombre }}</span>
                                         <span class="block text-base text-muted-foreground">{{ variante.nombre }}</span>
                                     </span>
 
@@ -524,36 +522,40 @@ async function avanzarEstado(venta: Venta) {
                         </template>
                     </div>
 
-                    <!-- Combos -->
-                    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <button
-                            v-for="combo in combos"
-                            :key="combo.id"
-                            class="text-left rounded-xl border-2 border-border bg-card text-card-foreground p-4 hover:border-primary/60 transition-colors"
-                            @click="agregarCombo(combo)"
-                        >
-                            <div class="flex items-start justify-between gap-2">
-                                <div>
-                                    <p class="text-lg font-semibold">{{ combo.nombre }}</p>
-                                    <p v-if="combo.descripcion" class="text-sm text-muted-foreground mt-0.5">
-                                        {{ combo.descripcion }}
+                    <!-- Combos, dentro de la pestaña de la burger -->
+                    <template v-if="combos.length && categoriaActiva === categoriaConCombos">
+                        <h3 class="font-semibold text-lg">Combos</h3>
+
+                        <div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+                            <button
+                                v-for="combo in combos"
+                                :key="combo.id"
+                                class="text-left rounded-xl border-2 border-border bg-card text-card-foreground p-4 hover:border-primary/60 transition-colors"
+                                @click="agregarCombo(combo)"
+                            >
+                                <div class="flex items-start justify-between gap-2">
+                                    <div>
+                                        <p class="text-lg font-semibold">{{ combo.nombre }}</p>
+                                        <p v-if="combo.descripcion" class="text-sm text-muted-foreground mt-0.5">
+                                            {{ combo.descripcion }}
+                                        </p>
+                                    </div>
+
+                                    <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full shrink-0">
+                                        Ahorrás {{ fmt(combo.ahorro) }}
+                                    </span>
+                                </div>
+
+                                <div class="mt-2 space-y-0.5">
+                                    <p v-for="item in combo.items" :key="item.variante_id" class="text-sm text-muted-foreground">
+                                        {{ item.cantidad }}x {{ item.variante.producto.nombre }} {{ item.variante.nombre }}
                                     </p>
                                 </div>
 
-                                <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full shrink-0">
-                                    Ahorrás {{ fmt(combo.ahorro) }}
-                                </span>
-                            </div>
-
-                            <div class="mt-2 space-y-0.5">
-                                <p v-for="item in combo.items" :key="item.variante_id" class="text-sm text-muted-foreground">
-                                    {{ item.cantidad }}x {{ item.variante.producto.nombre }} {{ item.variante.nombre }}
-                                </p>
-                            </div>
-
-                            <p class="text-xl font-bold mt-2">{{ fmt(combo.precio_total) }}</p>
-                        </button>
-                    </div>
+                                <p class="text-xl font-bold mt-2">{{ fmt(combo.precio_total) }}</p>
+                            </button>
+                        </div>
+                    </template>
 
                     <!-- Pedidos activos -->
                     <div class="flex flex-col gap-2">
