@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Caja;
 use App\Models\Categoria;
 use App\Models\Combo;
 use App\Models\Venta;
@@ -125,10 +126,19 @@ class PosController extends Controller
     // GET /api/pos/pedidos-activos
     public function pedidosActivos(): JsonResponse
     {
+        // Se filtra por la caja abierta y no por created_at = hoy: la app corre en
+        // UTC, así que a las 21:00 de Argentina "hoy" cambia y los pedidos de la
+        // noche desaparecían de la lista.
+        $caja = Caja::abiertaActual();
+
+        if (! $caja) {
+            return response()->json([]);
+        }
+
         $pedidos = Venta::with(['detalles', 'pagos'])
-            ->whereDate('created_at', today())
-            ->whereIn('estado', ['pendiente', 'preparacion', 'pagado'])
-            ->orderBy('numero_orden')
+            ->where('caja_id', $caja->id)
+            ->activos()
+            ->orderBy('created_at')
             ->get();
 
         return response()->json($pedidos);

@@ -62,6 +62,7 @@ Route::middleware(['web', 'auth'])->group(function () {
     Route::middleware('es_admin')->prefix('admin')->group(function () {
         Route::get('categorias', [AdminController::class, 'categorias']);
         Route::post('categorias', [AdminController::class, 'crearCategoria']);
+        Route::put('categorias/{categoria}', [AdminController::class, 'actualizarCategoria']);
 
         Route::get('insumos', [AdminController::class, 'insumos']);
         Route::post('insumos', [AdminController::class, 'crearInsumo']);

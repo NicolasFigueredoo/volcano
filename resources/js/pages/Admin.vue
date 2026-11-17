@@ -114,10 +114,12 @@ const fInsumo = ref({
 
 const fCategoria = ref({
     nombre: '',
+    negocio: 'burger',
 });
 
 const fGasto = ref({
     nombre: '',
+    negocio: 'compartido',
     monto_mensual: 0,
     dias_apertura_mes: 16,
     activo: true,
@@ -229,10 +231,12 @@ function abrirPanel(tipo: string, data: any = null) {
     } else if (tipo === 'categoria') {
         fCategoria.value = {
             nombre: data?.nombre ?? '',
+            negocio: data?.negocio ?? 'burger',
         };
     } else if (tipo === 'gasto') {
         fGasto.value = {
             nombre: data?.nombre ?? '',
+            negocio: data?.negocio ?? 'compartido',
             monto_mensual: Number(data?.monto_mensual ?? 0),
             dias_apertura_mes: Number(data?.dias_apertura_mes ?? 16),
             activo: data?.activo ?? true,
@@ -328,6 +332,37 @@ async function guardarCategoria() {
     await post('/api/admin/categorias', fCategoria.value as any);
 
     cerrarPanel();
+    await cargarTodo();
+}
+
+const NEGOCIOS_CATEGORIA = [
+    { value: 'burger', label: 'Burger' },
+    { value: 'parrilla', label: 'Parrilla' },
+    { value: 'general', label: 'Compartido (los dos)' },
+];
+
+const NEGOCIOS_GASTO = [
+    { value: 'burger', label: 'Burger' },
+    { value: 'parrilla', label: 'Parrilla' },
+    { value: 'compartido', label: 'Compartido (mitad y mitad)' },
+];
+
+const etiquetaNegocio: Record<string, string> = {
+    burger: 'Burger',
+    parrilla: 'Parrilla',
+    general: 'Compartido',
+    compartido: 'Compartido',
+};
+
+const colorNegocio: Record<string, string> = {
+    burger: 'bg-orange-500/10 text-orange-600 border-orange-500/30',
+    parrilla: 'bg-red-500/10 text-red-600 border-red-500/30',
+    general: 'bg-sky-500/10 text-sky-600 border-sky-500/30',
+    compartido: 'bg-muted text-muted-foreground border-border',
+};
+
+async function cambiarNegocioCategoria(cat: any, negocio: string) {
+    await put(`/api/admin/categorias/${cat.id}`, { negocio } as any);
     await cargarTodo();
 }
 
@@ -549,9 +584,23 @@ const margenActual = computed(() => {
                     </div>
 
                     <div v-for="cat in productosPorCategoria" :key="cat.id">
-                        <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                            {{ cat.nombre }}
-                        </h3>
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <h3 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                {{ cat.nombre }}
+                            </h3>
+
+                            <select
+                                :value="cat.negocio ?? 'burger'"
+                                @change="cambiarNegocioCategoria(cat, ($event.target as HTMLSelectElement).value)"
+                                class="text-xs rounded-full border px-2 py-0.5"
+                                :class="colorNegocio[cat.negocio ?? 'burger']"
+                                title="A qué negocio suman las ventas de esta categoría"
+                            >
+                                <option v-for="n in NEGOCIOS_CATEGORIA" :key="n.value" :value="n.value">
+                                    {{ n.label }}
+                                </option>
+                            </select>
+                        </div>
 
                         <Card v-for="prod in cat.productos" :key="prod.id" class="mb-2">
                             <CardContent class="p-3">
@@ -838,6 +887,7 @@ const margenActual = computed(() => {
                                 <thead>
                                     <tr class="border-b text-xs text-muted-foreground">
                                         <th class="text-left p-3 font-medium">Nombre</th>
+                                        <th class="text-left p-3 font-medium">Negocio</th>
                                         <th class="text-right p-3 font-medium">Mensual</th>
                                         <th class="text-right p-3 font-medium">Días</th>
                                         <th class="text-right p-3 font-medium">Por día</th>
@@ -855,6 +905,15 @@ const margenActual = computed(() => {
                                     >
                                         <td class="p-3 font-medium">
                                             {{ g.nombre }}
+                                        </td>
+
+                                        <td class="p-3">
+                                            <span
+                                                class="text-xs px-2 py-0.5 rounded-full border"
+                                                :class="colorNegocio[g.negocio ?? 'compartido']"
+                                            >
+                                                {{ etiquetaNegocio[g.negocio ?? 'compartido'] }}
+                                            </span>
                                         </td>
 
                                         <td class="p-3 text-right">
@@ -1432,6 +1491,18 @@ const margenActual = computed(() => {
                                 />
                             </div>
 
+                            <div>
+                                <label class="text-xs text-muted-foreground">Negocio</label>
+                                <select
+                                    v-model="fCategoria.negocio"
+                                    class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                >
+                                    <option v-for="n in NEGOCIOS_CATEGORIA" :key="n.value" :value="n.value">
+                                        {{ n.label }}
+                                    </option>
+                                </select>
+                            </div>
+
                             <div class="flex gap-2">
                                 <Button variant="outline" size="sm" class="flex-1" @click="cerrarPanel">
                                     Cancelar
@@ -1451,6 +1522,18 @@ const margenActual = computed(() => {
                                     v-model="fGasto.nombre"
                                     class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
                                 />
+                            </div>
+
+                            <div>
+                                <label class="text-xs text-muted-foreground">Negocio</label>
+                                <select
+                                    v-model="fGasto.negocio"
+                                    class="w-full mt-1 text-sm rounded border border-input bg-background px-2 py-1.5"
+                                >
+                                    <option v-for="n in NEGOCIOS_GASTO" :key="n.value" :value="n.value">
+                                        {{ n.label }}
+                                    </option>
+                                </select>
                             </div>
 
                             <div>

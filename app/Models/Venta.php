@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 #[ObservedBy(VentaObserver::class)]
 class Venta extends Model
@@ -111,9 +112,9 @@ class Venta extends Model
     }
 
     // Genera número de orden legible (1-99 por día)
-    public static function proximoNumeroOrden(): int
+    public static function proximoNumeroOrden(string $fechaOperativa): int
     {
-        $ultimo = self::whereDate('created_at', today())->max('numero_orden') ?? 0;
+        $ultimo = self::whereDate('fecha_operativa', $fechaOperativa)->max('numero_orden') ?? 0;
 
         return ($ultimo % 99) + 1;
     }
@@ -161,7 +162,7 @@ class Venta extends Model
                 'user_id' => $userId,
                 'mesa' => $data['mesa'] ?? null,
                 'estado' => 'pendiente',
-                'numero_orden' => self::proximoNumeroOrden(),
+                'numero_orden' => self::proximoNumeroOrden(Carbon::parse($caja->fecha_operativa)->toDateString()),
                 'tipo_precio' => $tipoPrecio,
                 'metodo_pago' => self::metodoPagoResumen($pagos),
                 'subtotal' => $subtotal,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
+import DesgloseNegocios, { type FilaNegocio } from '@/components/DesgloseNegocios.vue';
 import SepararInsumos from '@/components/SepararInsumos.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,6 +66,7 @@ interface Stats {
     ganancia_bruta?: number;
     gastos_fijos?: number;
     ganancia_neta?: number;
+    por_negocio?: Record<string, FilaNegocio>;
     separacion?: {
         reponer_insumos: number;
         ahorro: number;
@@ -120,6 +122,7 @@ interface CajaDetalle {
         ganancia_bruta: number;
         gastos_fijos: number;
         ganancia_neta: number;
+        por_negocio?: Record<string, FilaNegocio> | null;
     };
     resumen: {
         productos_top?: ProductoTop[];
@@ -668,6 +671,8 @@ onMounted(cargar);
                     </CardContent>
                 </Card>
             </div>
+
+            <DesgloseNegocios v-if="esAdmin && data?.stats.por_negocio" :por-negocio="data.stats.por_negocio" />
 
             <!-- Separación sugerida -->
             <Card v-if="esAdmin && data?.stats.separacion">
@@ -1356,6 +1361,11 @@ onMounted(cargar);
                                 </CardContent>
                             </Card>
                         </div>
+
+                        <DesgloseNegocios
+                            v-if="cajaDetalle.stats_guardadas.por_negocio"
+                            :por-negocio="cajaDetalle.stats_guardadas.por_negocio"
+                        />
 
                         <Card v-if="cajaDetalle.resumen?.productos_top?.length">
                             <CardHeader class="pb-2"><CardTitle class="text-sm">Productos más vendidos</CardTitle></CardHeader>

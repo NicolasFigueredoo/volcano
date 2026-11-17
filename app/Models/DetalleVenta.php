@@ -10,6 +10,7 @@ class DetalleVenta extends Model
     protected $fillable = [
         'venta_id',
         'variante_id',
+        'negocio',
         'nombre_snapshot',
         'precio_snapshot',
         'costo_snapshot',
@@ -19,10 +20,25 @@ class DetalleVenta extends Model
 
     protected $casts = [
         'precio_snapshot' => 'decimal:2',
-        'costo_snapshot'  => 'decimal:2',
-        'subtotal'        => 'decimal:2',
-        'cantidad'        => 'integer',
+        'costo_snapshot' => 'decimal:2',
+        'subtotal' => 'decimal:2',
+        'cantidad' => 'integer',
     ];
+
+    /**
+     * Cada línea guarda el negocio de su categoría al momento de la venta, así
+     * mover una categoría de negocio no reescribe la historia.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (DetalleVenta $detalle) {
+            if (! $detalle->negocio) {
+                $detalle->negocio = Variante::with('producto.categoria')
+                    ->find($detalle->variante_id)
+                    ?->producto?->categoria?->negocio ?? 'burger';
+            }
+        });
+    }
 
     // ── Relationships ────────────────────────────────────────────────────────
 

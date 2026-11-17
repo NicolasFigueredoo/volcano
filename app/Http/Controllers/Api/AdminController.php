@@ -202,14 +202,31 @@ class AdminController extends Controller
     {
         $request->validate([
             'nombre' => 'required|string|max:100',
+            'negocio' => 'sometimes|in:'.implode(',', Categoria::NEGOCIOS),
             'orden' => 'integer',
         ]);
 
         $categoria = Categoria::create(
-            $request->only('nombre', 'orden')
+            $request->only('nombre', 'negocio', 'orden')
         );
 
         return response()->json($categoria, 201);
+    }
+
+    public function actualizarCategoria(Request $request, Categoria $categoria): JsonResponse
+    {
+        $request->validate([
+            'nombre' => 'sometimes|string|max:100',
+            'negocio' => 'sometimes|in:'.implode(',', Categoria::NEGOCIOS),
+            'orden' => 'sometimes|integer',
+            'activo' => 'sometimes|boolean',
+        ]);
+
+        $categoria->update(
+            $request->only('nombre', 'negocio', 'orden', 'activo')
+        );
+
+        return response()->json($categoria);
     }
 
     // ── Gastos Fijos ─────────────────────────────────────────────────────────
@@ -225,12 +242,13 @@ class AdminController extends Controller
     {
         $request->validate([
             'nombre' => 'required|string|max:100',
+            'negocio' => 'sometimes|in:'.implode(',', GastoFijo::NEGOCIOS),
             'monto_mensual' => 'required|numeric|min:0',
             'dias_apertura_mes' => 'required|integer|min:1|max:31',
         ]);
 
         $gasto = GastoFijo::create(
-            $request->only('nombre', 'monto_mensual', 'dias_apertura_mes')
+            $request->only('nombre', 'negocio', 'monto_mensual', 'dias_apertura_mes')
         );
 
         return response()->json($gasto, 201);
@@ -240,13 +258,14 @@ class AdminController extends Controller
     {
         $request->validate([
             'nombre' => 'sometimes|string|max:100',
+            'negocio' => 'sometimes|in:'.implode(',', GastoFijo::NEGOCIOS),
             'monto_mensual' => 'sometimes|numeric|min:0',
             'dias_apertura_mes' => 'sometimes|integer|min:1|max:31',
             'activo' => 'boolean',
         ]);
 
         $gasto->update(
-            $request->only('nombre', 'monto_mensual', 'dias_apertura_mes', 'activo')
+            $request->only('nombre', 'negocio', 'monto_mensual', 'dias_apertura_mes', 'activo')
         );
 
         return response()->json($gasto);

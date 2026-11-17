@@ -68,7 +68,7 @@ it('carga la carta con los costos de la ficha', function () {
     // Correrlo de nuevo no duplica nada.
     (new CartaBebidasSeeder)->run();
 
-    expect(Variante::count())->toBe(7)
+    expect(Variante::whereHas('producto.categoria', fn ($q) => $q->where('nombre', 'Bebidas'))->count())->toBe(7)
         ->and(Inversion::count())->toBe(1);
 });
 

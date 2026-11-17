@@ -8,18 +8,24 @@ class GastoFijo extends Model
 {
     protected $table = 'gastos_fijos';
 
-    protected $fillable = ['nombre', 'monto_mensual', 'dias_apertura_mes', 'activo'];
+    /** Un gasto es de un negocio o se comparte mitad y mitad entre burger y parrilla. */
+    public const NEGOCIOS = ['burger', 'parrilla', 'compartido'];
+
+    protected $fillable = ['nombre', 'negocio', 'monto_mensual', 'dias_apertura_mes', 'activo'];
 
     protected $casts = [
-        'monto_mensual'     => 'decimal:2',
+        'monto_mensual' => 'decimal:2',
         'dias_apertura_mes' => 'integer',
-        'activo'            => 'boolean',
+        'activo' => 'boolean',
     ];
 
     // Costo por día de apertura
     public function getCostoDiarioAttribute(): float
     {
-        if ($this->dias_apertura_mes <= 0) return 0;
+        if ($this->dias_apertura_mes <= 0) {
+            return 0;
+        }
+
         return round($this->monto_mensual / $this->dias_apertura_mes, 2);
     }
 

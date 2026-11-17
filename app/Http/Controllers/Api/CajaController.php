@@ -9,6 +9,7 @@ use App\Models\GastoFijo;
 use App\Models\Insumo;
 use App\Models\Variante;
 use App\Models\Venta;
+use App\Services\NegocioService;
 use App\Services\SeparacionService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -353,6 +354,7 @@ class CajaController extends Controller
                     'ganancia_bruta' => $statsCalculadas['ganancia_bruta'] ?? 0,
                     'gastos_fijos' => $statsCalculadas['gastos_fijos'] ?? 0,
                     'ganancia_neta' => $statsCalculadas['ganancia_neta'] ?? 0,
+                    'por_negocio' => $statsCalculadas['por_negocio'] ?? null,
                 ],
                 'resumen' => $caja->resumen_json ?? [],
             ]);
@@ -370,6 +372,10 @@ class CajaController extends Controller
                 'ganancia_bruta' => $caja->ganancia_bruta,
                 'gastos_fijos' => $caja->gastos_fijos,
                 'ganancia_neta' => $caja->ganancia_neta,
+                // Cajas cerradas antes de la separación por negocio: se arma
+                // con las líneas vendidas y los gastos fijos que se guardaron.
+                'por_negocio' => $caja->resumen_json['por_negocio']
+                    ?? NegocioService::desglose($ventas, (float) $caja->gastos_fijos),
             ],
             'resumen' => $caja->resumen_json ?? [],
         ]);
@@ -763,7 +769,10 @@ class CajaController extends Controller
             'gastos_fijos' => $stats['gastos_fijos'] ?? 0,
             'ganancia_neta' => $stats['ganancia_neta'] ?? 0,
             'cantidad_ventas' => $stats['cantidad_ventas'],
-            'resumen_json' => ['productos_top' => $productosTop],
+            'resumen_json' => [
+                'productos_top' => $productosTop,
+                'por_negocio' => $stats['por_negocio'],
+            ],
         ]);
     }
 
@@ -788,6 +797,9 @@ class CajaController extends Controller
             'gastos_fijos' => $stats['gastos_fijos'] ?? 0,
             'ganancia_neta' => $stats['ganancia_neta'] ?? 0,
             'cantidad_ventas' => $stats['cantidad_ventas'],
+            'resumen_json' => array_merge($caja->resumen_json ?? [], [
+                'por_negocio' => $stats['por_negocio'],
+            ]),
         ]);
     }
 
@@ -860,6 +872,7 @@ class CajaController extends Controller
             $stats['ganancia_bruta'] = $gananciaBruta;
             $stats['gastos_fijos'] = $gastosDia;
             $stats['ganancia_neta'] = $gananciaNeta;
+            $stats['por_negocio'] = NegocioService::desglose($ventas);
             $stats['separacion'] = [
                 'reponer_insumos' => $costoInsumos,
                 'ahorro' => max(0, round($gananciaNeta * 0.10)),

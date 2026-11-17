@@ -7,8 +7,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Categoria extends Model
 {
+    /** Negocios a los que puede pertenecer una categoría del menú. */
+    public const NEGOCIOS = ['burger', 'parrilla', 'general'];
+
     protected $fillable = [
         'nombre',
+        'negocio',
         'orden',
         'activo',
     ];
