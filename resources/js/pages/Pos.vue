@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useApi } from '@/composables/useApi';
 import { onMounted, ref, computed } from 'vue';
-import { Minus, Plus, Trash2, RefreshCw } from 'lucide-vue-next';
+import { ChevronDown, ChevronUp, Minus, Plus, Trash2, RefreshCw, Truck } from 'lucide-vue-next';
 
 interface Variante {
     id: number;
@@ -21,9 +21,12 @@ interface Producto {
     variantes: Variante[];
 }
 
+type Negocio = 'burger' | 'parrilla' | 'general';
+
 interface Categoria {
     id: number;
     nombre: string;
+    negocio?: Negocio;
     productos: Producto[];
 }
 
@@ -124,6 +127,44 @@ const tipoPrecio = ref<TipoPrecio>('cliente');
 
 const mesas = ['Mesa 1', 'Mesa 2', 'Mesa 3', 'Mesa 4', 'Mesa 5', 'Para llevar'];
 
+const negocioActivo = ref<'burger' | 'parrilla'>('burger');
+const masOpciones = ref(false);
+const ultimoNumero = ref<number | null>(null);
+
+const NEGOCIOS_TABS: { value: 'burger' | 'parrilla'; label: string }[] = [
+    { value: 'burger', label: '🍔 Burger' },
+    { value: 'parrilla', label: '🔥 Parrilla' },
+];
+
+const negocioDe = (c: Categoria): Negocio => c.negocio ?? 'burger';
+
+// Pestañas: solo los negocios que tienen algo para vender.
+const tabsNegocio = computed(() =>
+    NEGOCIOS_TABS.filter(t => categorias.value.some(c => negocioDe(c) === t.value && c.productos.length)),
+);
+
+const categoriasDelNegocio = computed(() =>
+    categorias.value.filter(c => negocioDe(c) === negocioActivo.value && c.productos.length),
+);
+
+// Lo compartido (envío) no va en la grilla: son botones fijos en el pedido.
+const variantesEnvio = computed(() =>
+    categorias.value
+        .filter(c => negocioDe(c) === 'general')
+        .flatMap(c => c.productos.flatMap(p => p.variantes.map(v => ({ variante: v, producto: p })))),
+);
+
+function elegirNegocio(n: 'burger' | 'parrilla') {
+    negocioActivo.value = n;
+    categoriaActiva.value = categoriasDelNegocio.value[0]?.id ?? null;
+}
+
+function cantidadEnPedido(varianteId: number) {
+    return pedido.value
+        .filter(l => l.tipo === 'variante' && l.variante_id === varianteId)
+        .reduce((acc, l) => acc + l.cantidad, 0);
+}
+
 const estadoLabel: Record<string, string> = {
     pendiente: 'Pendiente',
     preparacion: 'En prep.',
@@ -180,7 +221,8 @@ async function cargarMenu() {
     if (data) {
         categorias.value = data.categorias;
         combos.value = data.combos;
-        categoriaActiva.value = data.categorias[0]?.id ?? (data.combos.length ? 'combos' : null);
+        elegirNegocio(tabsNegocio.value[0]?.value ?? 'burger');
+        if (categoriaActiva.value === null && data.combos.length) categoriaActiva.value = 'combos';
     }
 }
 
@@ -291,6 +333,11 @@ function cambiarCantidad(index: number, delta: number) {
     }
 }
 
+function pedirLimpiar() {
+    if (pedido.value.length && !window.confirm('¿Borrar todo el pedido?')) return;
+    limpiarPedido();
+}
+
 function limpiarPedido() {
     pedido.value = [];
     mesa.value = '';
@@ -301,6 +348,7 @@ function limpiarPedido() {
     pagoModo.value = 'total';
     metodoPago.value = 'efectivo';
     tipoPrecio.value = 'cliente';
+    masOpciones.value = false;
 }
 
 function buildPagos() {
@@ -353,16 +401,17 @@ async function cobrar() {
         ...(combosPayload.length ? { combos: combosPayload } : {}),
     };
 
-    const res = await post('/api/pos/venta', payload);
+    const res = await post<Venta>('/api/pos/venta', payload);
 
     if (res) {
         confirmado.value = true;
+        ultimoNumero.value = res.numero_orden ?? null;
+        limpiarPedido();
         await cargarPedidosActivos();
 
         setTimeout(() => {
             confirmado.value = false;
-            limpiarPedido();
-        }, 2000);
+        }, 2500);
     }
 }
 
@@ -381,144 +430,146 @@ async function avanzarEstado(venta: Venta) {
 
 <template>
     <AppLayout :breadcrumbs="[{ title: 'POS', href: '/pos' }]">
+        <!-- Confirmación grande: se ve desde lejos que el pedido entró -->
+        <div
+            v-if="confirmado"
+            class="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-green-600/95 text-white"
+            @click="confirmado = false"
+        >
+            <p class="text-7xl">✓</p>
+            <p class="text-4xl font-bold">Pedido registrado</p>
+            <p v-if="ultimoNumero" class="text-6xl font-black">#{{ ultimoNumero }}</p>
+        </div>
+
         <div class="flex h-[calc(100vh-4rem)] gap-4 p-4 overflow-hidden">
-            <div class="flex flex-col flex-1 gap-3 min-w-0 overflow-hidden">
-                <div class="flex gap-2 flex-wrap">
-                    <Button
-                        v-for="cat in categorias"
+            <div class="flex flex-col flex-1 gap-3 min-w-0 overflow-hidden text-foreground">
+                <!-- Negocio -->
+                <div v-if="tabsNegocio.length > 1" class="grid grid-cols-2 gap-2">
+                    <button
+                        v-for="t in tabsNegocio"
+                        :key="t.value"
+                        class="h-14 rounded-xl border-2 text-xl font-bold transition-colors"
+                        :class="negocioActivo === t.value
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'border-input text-foreground hover:bg-muted'"
+                        @click="elegirNegocio(t.value)"
+                    >
+                        {{ t.label }}
+                    </button>
+                </div>
+
+                <!-- Categorías del negocio (solo si hay más de una) -->
+                <div
+                    v-if="categoriasDelNegocio.length > 1 || (negocioActivo === 'burger' && combos.length)"
+                    class="flex gap-2 flex-wrap"
+                >
+                    <button
+                        v-for="cat in categoriasDelNegocio"
                         :key="cat.id"
-                        :variant="cat.id === categoriaActiva ? 'default' : 'outline'"
-                        size="sm"
+                        class="h-11 px-4 rounded-lg border text-base font-medium transition-colors"
+                        :class="cat.id === categoriaActiva
+                            ? 'bg-foreground text-background border-foreground'
+                            : 'border-input text-foreground hover:bg-muted'"
                         @click="categoriaActiva = cat.id"
                     >
                         {{ cat.nombre }}
-                    </Button>
+                    </button>
 
-                    <Button
-                        v-if="combos.length"
-                        :variant="categoriaActiva === 'combos' ? 'default' : 'outline'"
-                        size="sm"
+                    <button
+                        v-if="negocioActivo === 'burger' && combos.length"
+                        class="h-11 px-4 rounded-lg border text-base font-medium transition-colors"
+                        :class="categoriaActiva === 'combos'
+                            ? 'bg-foreground text-background border-foreground'
+                            : 'border-input text-foreground hover:bg-muted'"
                         @click="categoriaActiva = 'combos'"
                     >
-                        🔥 Combos
-                    </Button>
+                        Combos
+                    </button>
                 </div>
 
-                <div v-if="loading" class="text-muted-foreground text-sm">
+                <div v-if="loading && !categorias.length" class="text-muted-foreground text-lg">
                     Cargando menú...
                 </div>
 
-                <div v-else-if="error" class="text-destructive text-sm">
-                    {{ error }}
-                </div>
-
                 <div v-else class="flex flex-col gap-4 min-h-0 overflow-y-auto pr-1">
+                    <!-- Productos -->
                     <div
                         v-if="categoriaActiva !== 'combos'"
-                        class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+                        class="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3"
                     >
                         <template v-if="categoriaActivaData">
-                            <template
-                                v-for="producto in categoriaActivaData.productos"
-                                :key="producto.id"
-                            >
-                                <Card
+                            <template v-for="producto in categoriaActivaData.productos" :key="producto.id">
+                                <button
                                     v-for="variante in variantesVisibles(producto)"
                                     :key="variante.id"
-                                    class="cursor-pointer hover:border-primary transition-colors"
+                                    class="relative text-left rounded-xl border-2 bg-card text-card-foreground p-4 min-h-28 flex flex-col justify-between transition-colors active:scale-[0.98]"
+                                    :class="cantidadEnPedido(variante.id) ? 'border-primary' : 'border-border hover:border-primary/60'"
                                     @click="agregarVariante(variante, producto.nombre, 0, 1, producto.id)"
                                 >
-                                    <CardContent class="p-3">
-                                        <p class="font-medium text-sm leading-tight">
-                                            {{ producto.nombre }}
-                                        </p>
+                                    <span
+                                        v-if="cantidadEnPedido(variante.id)"
+                                        class="absolute top-2 right-2 w-9 h-9 rounded-full bg-primary text-primary-foreground text-lg font-bold flex items-center justify-center"
+                                    >
+                                        {{ cantidadEnPedido(variante.id) }}
+                                    </span>
 
-                                        <p class="text-xs text-muted-foreground mb-2">
-                                            {{ variante.nombre }}
-                                        </p>
+                                    <span>
+                                        <span class="block text-lg font-semibold leading-tight pr-10">{{ producto.nombre }}</span>
+                                        <span class="block text-base text-muted-foreground">{{ variante.nombre }}</span>
+                                    </span>
 
-                                        <p class="font-semibold text-sm">
-                                            {{ fmt(variante.precio_venta) }}
-                                        </p>
-                                    </CardContent>
-                                </Card>
+                                    <span class="block text-xl font-bold mt-2">{{ fmt(variante.precio_venta) }}</span>
+                                </button>
                             </template>
                         </template>
                     </div>
 
-                    <div
-                        v-else
-                        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
-                    >
-                        <Card
+                    <!-- Combos -->
+                    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <button
                             v-for="combo in combos"
                             :key="combo.id"
-                            class="cursor-pointer hover:border-primary transition-colors"
+                            class="text-left rounded-xl border-2 border-border bg-card text-card-foreground p-4 hover:border-primary/60 transition-colors"
                             @click="agregarCombo(combo)"
                         >
-                            <CardContent class="p-3">
-                                <div class="flex items-start justify-between gap-2">
-                                    <div>
-                                        <p class="font-semibold text-sm">
-                                            {{ combo.nombre }}
-                                        </p>
-
-                                        <p
-                                            v-if="combo.descripcion"
-                                            class="text-xs text-muted-foreground mt-0.5"
-                                        >
-                                            {{ combo.descripcion }}
-                                        </p>
-                                    </div>
-
-                                    <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full shrink-0">
-                                        Ahorrás {{ fmt(combo.ahorro) }}
-                                    </span>
-                                </div>
-
-                                <div class="mt-2 space-y-0.5">
-                                    <p
-                                        v-for="item in combo.items"
-                                        :key="item.variante_id"
-                                        class="text-xs text-muted-foreground"
-                                    >
-                                        {{ item.cantidad }}x
-                                        {{ item.variante.producto.nombre }}
-                                        {{ item.variante.nombre }}
-
-                                        <span
-                                            v-if="item.descuento > 0"
-                                            class="text-primary"
-                                        >
-                                            -{{ fmt(item.descuento) }}
-                                        </span>
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <p class="text-lg font-semibold">{{ combo.nombre }}</p>
+                                    <p v-if="combo.descripcion" class="text-sm text-muted-foreground mt-0.5">
+                                        {{ combo.descripcion }}
                                     </p>
                                 </div>
 
-                                <p class="font-bold text-sm mt-2">
-                                    {{ fmt(combo.precio_total) }}
+                                <span class="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full shrink-0">
+                                    Ahorrás {{ fmt(combo.ahorro) }}
+                                </span>
+                            </div>
+
+                            <div class="mt-2 space-y-0.5">
+                                <p v-for="item in combo.items" :key="item.variante_id" class="text-sm text-muted-foreground">
+                                    {{ item.cantidad }}x {{ item.variante.producto.nombre }} {{ item.variante.nombre }}
                                 </p>
-                            </CardContent>
-                        </Card>
+                            </div>
+
+                            <p class="text-xl font-bold mt-2">{{ fmt(combo.precio_total) }}</p>
+                        </button>
                     </div>
 
+                    <!-- Pedidos activos -->
                     <div class="flex flex-col gap-2">
                         <div class="flex items-center justify-between">
-                            <h3 class="font-semibold text-sm">Pedidos activos</h3>
+                            <h3 class="font-semibold text-lg">Pedidos activos</h3>
 
                             <button
+                                class="h-10 px-3 rounded-lg border text-sm text-muted-foreground hover:text-foreground flex items-center gap-2"
                                 @click="cargarPedidosActivos"
-                                class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
                             >
-                                <RefreshCw class="w-3 h-3" />
+                                <RefreshCw class="w-4 h-4" />
                                 Actualizar
                             </button>
                         </div>
 
-                        <p
-                            v-if="!pedidosActivos.length"
-                            class="text-xs text-muted-foreground"
-                        >
+                        <p v-if="!pedidosActivos.length" class="text-base text-muted-foreground">
                             Sin pedidos activos
                         </p>
 
@@ -526,66 +577,50 @@ async function avanzarEstado(venta: Venta) {
                             <Card
                                 v-for="pedidoActivo in pedidosActivos"
                                 :key="pedidoActivo.id"
-                                class="border"
+                                class="border-2"
                                 :class="estadoColor[pedidoActivo.estado]"
                             >
                                 <CardContent class="p-3">
                                     <div class="flex items-center justify-between mb-2">
-                                        <span class="font-black text-lg">
-                                            #{{ pedidoActivo.numero_orden }}
-                                        </span>
+                                        <span class="font-black text-2xl">#{{ pedidoActivo.numero_orden }}</span>
 
                                         <span
-                                            class="text-xs font-medium px-2 py-0.5 rounded-full border"
+                                            class="text-sm font-medium px-2 py-0.5 rounded-full border"
                                             :class="estadoColor[pedidoActivo.estado]"
                                         >
                                             {{ estadoLabel[pedidoActivo.estado] }}
                                         </span>
                                     </div>
 
-                                    <div class="flex items-center justify-between mb-2">
-                                        <span class="text-xs text-muted-foreground flex items-center gap-1">
+                                    <div class="flex items-center justify-between mb-2 text-sm text-muted-foreground">
+                                        <span class="flex items-center gap-1">
                                             {{ pedidoActivo.mesa ?? 'Sin mesa' }}
                                             <span
                                                 v-if="pedidoActivo.tipo_precio && pedidoActivo.tipo_precio !== 'cliente'"
-                                                class="px-1.5 py-0.5 rounded-full border capitalize"
+                                                class="px-1.5 py-0.5 rounded-full border capitalize text-xs"
                                                 :class="tipoPrecioBadge[pedidoActivo.tipo_precio]"
                                             >
                                                 {{ pedidoActivo.tipo_precio }}
                                             </span>
                                         </span>
-
-                                        <span class="text-xs text-muted-foreground">
-                                            {{ horaVenta(pedidoActivo.created_at) }}
-                                        </span>
+                                        <span>{{ horaVenta(pedidoActivo.created_at) }}</span>
                                     </div>
 
-                                    <p
-                                        v-if="pedidoActivo.notas"
-                                        class="text-xs mb-2 italic"
-                                    >
-                                        {{ pedidoActivo.notas }}
-                                    </p>
+                                    <p v-if="pedidoActivo.notas" class="text-sm mb-2 italic">{{ pedidoActivo.notas }}</p>
 
-                                    <div class="text-xs space-y-0.5 mb-3">
-                                        <p
-                                            v-for="d in pedidoActivo.detalles"
-                                            :key="d.nombre_snapshot"
-                                            class="leading-tight"
-                                        >
+                                    <div class="text-base space-y-0.5 mb-3">
+                                        <p v-for="d in pedidoActivo.detalles" :key="d.nombre_snapshot" class="leading-tight">
                                             {{ d.cantidad }}x {{ d.nombre_snapshot }}
                                         </p>
                                     </div>
 
-                                    <div class="flex items-center justify-between">
-                                        <span class="text-xs font-semibold">
-                                            {{ fmt(pedidoActivo.total) }}
-                                        </span>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-base font-semibold">{{ fmt(pedidoActivo.total) }}</span>
 
                                         <button
                                             v-if="siguienteEstado[pedidoActivo.estado]"
+                                            class="h-11 px-4 rounded-lg bg-primary text-primary-foreground text-base font-medium hover:opacity-90"
                                             @click="avanzarEstado(pedidoActivo)"
-                                            class="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:opacity-90"
                                         >
                                             → {{ estadoLabel[siguienteEstado[pedidoActivo.estado]] }}
                                         </button>
@@ -597,209 +632,211 @@ async function avanzarEstado(venta: Venta) {
                 </div>
             </div>
 
-            <div class="w-80 flex flex-col gap-3 shrink-0">
+            <!-- Pedido -->
+            <div class="w-80 xl:w-96 flex flex-col shrink-0">
                 <Card class="flex-1 flex flex-col overflow-hidden">
                     <CardContent class="flex flex-col gap-3 p-4 h-full overflow-hidden">
                         <div class="flex items-center justify-between">
-                            <span class="font-semibold">Pedido</span>
-
-                            <select
-                                v-model="mesa"
-                                class="h-7 text-xs rounded-md border border-input bg-background px-2 py-1 text-foreground"
-                            >
-                                <option value="">Mesa</option>
-                                <option v-for="m in mesas" :key="m" :value="m">
-                                    {{ m }}
-                                </option>
-                            </select>
-                        </div>
-
-                        <textarea
-                            v-model="notas"
-                            rows="2"
-                            placeholder="Descripción del pedido..."
-                            class="w-full text-xs rounded-md border border-input bg-background px-2 py-1.5 resize-none"
-                        />
-
-                        <Separator />
-
-                        <div class="flex-1 overflow-y-auto flex flex-col gap-2 min-h-0">
-                            <p
-                                v-if="!pedido.length"
-                                class="text-xs text-muted-foreground text-center py-4"
-                            >
-                                Agregá productos del menú
-                            </p>
-
-                            <div
-                                v-for="(linea, i) in pedido"
-                                :key="i"
-                                class="flex items-center gap-2"
-                            >
-                                <span class="flex-1 text-xs leading-tight" :class="linea.es_extra ? 'pl-2 text-muted-foreground' : ''">
-                                    <template v-if="linea.es_extra">+ </template>{{ linea.nombre }}
-                                    <button
-                                        v-if="!linea.es_extra && linea.producto_id && extraPorProducto[linea.producto_id]"
-                                        class="ml-1 px-1.5 py-0.5 rounded border text-[10px] hover:bg-muted"
-                                        title="Agregar un patty extra"
-                                        @click="agregarPatty(i)"
-                                    >
-                                        + Patty
-                                    </button>
-                                </span>
-
-                                <div class="flex items-center gap-1 shrink-0">
-                                    <button
-                                        class="w-5 h-5 rounded-full border flex items-center justify-center hover:bg-muted"
-                                        @click="cambiarCantidad(i, -1)"
-                                    >
-                                        <Minus class="w-3 h-3" />
-                                    </button>
-
-                                    <span class="w-4 text-center text-xs font-medium">
-                                        {{ linea.cantidad }}
-                                    </span>
-
-                                    <button
-                                        class="w-5 h-5 rounded-full border flex items-center justify-center hover:bg-muted"
-                                        @click="cambiarCantidad(i, 1)"
-                                    >
-                                        <Plus class="w-3 h-3" />
-                                    </button>
-                                </div>
-
-                                <span class="text-xs text-muted-foreground w-16 text-right shrink-0">
-                                    {{ fmt(precioLinea(linea) * linea.cantidad) }}
-                                </span>
-                            </div>
-                        </div>
-
-                        <Separator />
-
-                        <div class="flex flex-col gap-1 text-sm">
-                            <div class="flex justify-between text-muted-foreground">
-                                <span>Subtotal</span>
-                                <span>{{ fmt(subtotal) }}</span>
-                            </div>
-
-                            <div
-                                v-if="descuento10"
-                                class="flex justify-between text-muted-foreground"
-                            >
-                                <span>Desc. 10%</span>
-                                <span>-{{ fmt(descuentoMonto) }}</span>
-                            </div>
-
-                            <div class="flex justify-between font-semibold">
-                                <span>Total</span>
-                                <span>{{ fmt(total) }}</span>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-3 gap-1">
+                            <span class="text-xl font-bold">Pedido</span>
                             <button
-                                v-for="t in tiposPrecio"
-                                :key="t.value"
-                                @click="tipoPrecio = t.value"
-                                class="text-xs py-1 rounded border transition-colors"
-                                :class="tipoPrecio === t.value
-                                    ? 'bg-primary text-primary-foreground border-primary'
-                                    : 'border-input hover:bg-muted'"
+                                class="h-10 px-3 rounded-lg text-sm text-muted-foreground hover:bg-muted flex items-center gap-1"
+                                @click="pedirLimpiar"
                             >
-                                {{ t.label }}
+                                <Trash2 class="w-4 h-4" />
+                                Limpiar
                             </button>
                         </div>
 
-                        <label
-                            v-if="tipoPrecio === 'cliente'"
-                            class="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer"
-                        >
-                            <input type="checkbox" v-model="descuento10" class="rounded" />
-                            Descuento 10%
-                        </label>
+                        <!-- Mesa -->
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <button
+                                v-for="m in mesas"
+                                :key="m"
+                                class="h-9 rounded-lg border text-sm transition-colors"
+                                :class="mesa === m ? 'bg-foreground text-background border-foreground' : 'border-input hover:bg-muted'"
+                                @click="mesa = mesa === m ? '' : m"
+                            >
+                                {{ m }}
+                            </button>
+                        </div>
+
+                        <!-- Líneas -->
+                        <div class="flex-1 overflow-y-auto flex flex-col gap-2.5 min-h-24">
+                            <p v-if="!pedido.length" class="text-base text-muted-foreground text-center py-6">
+                                Tocá los productos para agregarlos
+                            </p>
+
+                            <div v-for="(linea, i) in pedido" :key="i" class="flex items-center gap-2">
+                                <div class="flex-1 min-w-0" :class="linea.es_extra ? 'pl-3' : ''">
+                                    <p class="text-base leading-tight" :class="linea.es_extra ? 'text-muted-foreground' : 'font-medium'">
+                                        <template v-if="linea.es_extra">+ </template>{{ linea.nombre }}
+                                    </p>
+                                    <p class="flex items-center gap-2 text-sm text-muted-foreground">
+                                        {{ fmt(precioLinea(linea) * linea.cantidad) }}
+                                        <button
+                                            v-if="!linea.es_extra && linea.producto_id && extraPorProducto[linea.producto_id]"
+                                            class="h-7 px-2 rounded-md border text-xs text-foreground hover:bg-muted"
+                                            @click="agregarPatty(i)"
+                                        >
+                                            + Patty
+                                        </button>
+                                    </p>
+                                </div>
+
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        class="w-10 h-10 rounded-full border-2 flex items-center justify-center hover:bg-muted"
+                                        @click="cambiarCantidad(i, -1)"
+                                    >
+                                        <Minus class="w-5 h-5" />
+                                    </button>
+                                    <span class="w-7 text-center text-lg font-bold">{{ linea.cantidad }}</span>
+                                    <button
+                                        class="w-10 h-10 rounded-full border-2 flex items-center justify-center hover:bg-muted"
+                                        @click="cambiarCantidad(i, 1)"
+                                    >
+                                        <Plus class="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Envío -->
+                        <div v-if="variantesEnvio.length" class="flex items-center gap-2">
+                            <span class="text-sm text-muted-foreground flex items-center gap-1 shrink-0">
+                                <Truck class="w-4 h-4" /> Envío
+                            </span>
+                            <button
+                                v-for="e in variantesEnvio"
+                                :key="e.variante.id"
+                                class="flex-1 h-10 rounded-lg border text-base font-medium transition-colors"
+                                :class="cantidadEnPedido(e.variante.id) ? 'bg-foreground text-background border-foreground' : 'border-input hover:bg-muted'"
+                                @click="agregarVariante(e.variante, e.producto.nombre, 0, 1, e.producto.id)"
+                            >
+                                {{ fmt(e.variante.precio_venta) }}
+                            </button>
+                        </div>
 
                         <Separator />
 
-                        <p v-if="tipoPrecio === 'regalo'" class="text-xs text-muted-foreground text-center">
+                        <!-- Total -->
+                        <div class="flex flex-col gap-0.5">
+                            <div v-if="descuento10" class="flex justify-between text-sm text-muted-foreground">
+                                <span>Desc. 10%</span>
+                                <span>-{{ fmt(descuentoMonto) }}</span>
+                            </div>
+                            <div class="flex justify-between items-baseline">
+                                <span class="text-lg">Total</span>
+                                <span class="text-3xl font-black">{{ fmt(total) }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Pago -->
+                        <p v-if="tipoPrecio === 'regalo'" class="text-base text-center text-pink-600">
                             Regalo: no se cobra nada.
                         </p>
 
+                        <div v-else-if="pagoModo === 'total'" class="grid grid-cols-2 gap-2">
+                            <button
+                                class="h-14 rounded-xl border-2 text-lg font-semibold transition-colors"
+                                :class="metodoPago === 'efectivo' ? 'bg-green-600 text-white border-green-600' : 'border-input hover:bg-muted'"
+                                @click="metodoPago = 'efectivo'"
+                            >
+                                💵 Efectivo
+                            </button>
+                            <button
+                                class="h-14 rounded-xl border-2 text-lg font-semibold transition-colors"
+                                :class="metodoPago === 'transferencia' ? 'bg-sky-600 text-white border-sky-600' : 'border-input hover:bg-muted'"
+                                @click="metodoPago = 'transferencia'"
+                            >
+                                📱 Transf.
+                            </button>
+                        </div>
+
                         <div v-else class="flex flex-col gap-2">
-                            <div class="flex gap-2">
+                            <label class="flex items-center gap-2">
+                                <span class="text-base w-28 shrink-0">💵 Efectivo</span>
+                                <input
+                                    type="number"
+                                    v-model.number="pagoEfectivo"
+                                    min="0"
+                                    class="w-full h-11 text-base rounded-lg border border-input bg-background px-3"
+                                />
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <span class="text-base w-28 shrink-0">📱 Transf.</span>
+                                <input
+                                    type="number"
+                                    v-model.number="pagoTransferencia"
+                                    min="0"
+                                    class="w-full h-11 text-base rounded-lg border border-input bg-background px-3"
+                                />
+                            </label>
+                        </div>
+
+                        <!-- Más opciones: lo que se usa poco queda escondido -->
+                        <button
+                            class="text-sm text-muted-foreground flex items-center justify-center gap-1 hover:text-foreground"
+                            @click="masOpciones = !masOpciones"
+                        >
+                            Más opciones
+                            <ChevronUp v-if="masOpciones" class="w-4 h-4" />
+                            <ChevronDown v-else class="w-4 h-4" />
+                        </button>
+
+                        <div v-if="masOpciones" class="flex flex-col gap-2 rounded-lg border p-2">
+                            <div class="grid grid-cols-3 gap-1">
                                 <button
+                                    v-for="t in tiposPrecio"
+                                    :key="t.value"
+                                    class="h-9 text-sm rounded-md border transition-colors"
+                                    :class="tipoPrecio === t.value ? 'bg-primary text-primary-foreground border-primary' : 'border-input hover:bg-muted'"
+                                    @click="tipoPrecio = t.value"
+                                >
+                                    {{ t.label }}
+                                </button>
+                            </div>
+
+                            <div v-if="tipoPrecio !== 'regalo'" class="grid grid-cols-2 gap-1">
+                                <button
+                                    class="h-9 text-sm rounded-md border transition-colors"
+                                    :class="pagoModo === 'total' ? 'bg-primary text-primary-foreground border-primary' : 'border-input hover:bg-muted'"
                                     @click="pagoModo = 'total'"
-                                    class="flex-1 text-xs py-1 rounded border transition-colors"
-                                    :class="pagoModo === 'total'
-                                        ? 'bg-primary text-primary-foreground border-primary'
-                                        : 'border-input hover:bg-muted'"
                                 >
                                     Un método
                                 </button>
-
                                 <button
+                                    class="h-9 text-sm rounded-md border transition-colors"
+                                    :class="pagoModo === 'mixto' ? 'bg-primary text-primary-foreground border-primary' : 'border-input hover:bg-muted'"
                                     @click="pagoModo = 'mixto'"
-                                    class="flex-1 text-xs py-1 rounded border transition-colors"
-                                    :class="pagoModo === 'mixto'
-                                        ? 'bg-primary text-primary-foreground border-primary'
-                                        : 'border-input hover:bg-muted'"
                                 >
                                     Mixto
                                 </button>
                             </div>
 
-                            <div v-if="pagoModo === 'total'" class="grid grid-cols-2 gap-1">
-                                <button
-                                    v-for="m in ['efectivo', 'transferencia']"
-                                    :key="m"
-                                    @click="metodoPago = m as any"
-                                    class="text-xs py-1.5 rounded border capitalize transition-colors"
-                                    :class="metodoPago === m
-                                        ? 'bg-primary text-primary-foreground border-primary'
-                                        : 'border-input hover:bg-muted'"
-                                >
-                                    {{ m }}
-                                </button>
-                            </div>
+                            <label v-if="tipoPrecio === 'cliente'" class="flex items-center gap-2 text-sm cursor-pointer">
+                                <input type="checkbox" v-model="descuento10" class="w-4 h-4 rounded" />
+                                Descuento 10%
+                            </label>
 
-                            <div v-else class="flex flex-col gap-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-xs w-24 shrink-0">Efectivo</span>
-
-                                    <input
-                                        type="number"
-                                        v-model.number="pagoEfectivo"
-                                        min="0"
-                                        class="w-full text-xs rounded border border-input bg-background px-2 py-1"
-                                    />
-                                </div>
-
-                                <div class="flex items-center gap-2">
-                                    <span class="text-xs w-24 shrink-0">Transferencia</span>
-
-                                    <input
-                                        type="number"
-                                        v-model.number="pagoTransferencia"
-                                        min="0"
-                                        class="w-full text-xs rounded border border-input bg-background px-2 py-1"
-                                    />
-                                </div>
-                            </div>
+                            <textarea
+                                v-model="notas"
+                                rows="2"
+                                placeholder="Nota del pedido (ej. sin cebolla)"
+                                class="w-full text-sm rounded-md border border-input bg-background px-2 py-1.5 resize-none"
+                            />
                         </div>
 
-                        <Button class="w-full" :disabled="!pedido.length || loading" @click="cobrar">
-                            <span v-if="confirmado">✓ Pedido registrado</span>
-                            <span v-else-if="loading">Procesando...</span>
+                        <Button
+                            class="w-full h-16 text-xl font-bold rounded-xl"
+                            :disabled="!pedido.length || loading"
+                            @click="cobrar"
+                        >
+                            <span v-if="loading">Procesando...</span>
                             <span v-else>Confirmar {{ fmt(total) }}</span>
                         </Button>
 
-                        <Button variant="ghost" size="sm" class="w-full text-xs" @click="limpiarPedido">
-                            <Trash2 class="w-3 h-3 mr-1" />
-                            Limpiar
-                        </Button>
-
-                        <p v-if="error" class="text-xs text-destructive">
-                            {{ error }}
-                        </p>
+                        <p v-if="error" class="text-base text-destructive text-center">{{ error }}</p>
                     </CardContent>
                 </Card>
             </div>

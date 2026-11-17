@@ -19,8 +19,9 @@ class PosController extends Controller
     {
         $categorias = Categoria::activo()
             ->with(['productos' => function ($q) {
-                $q->activo()->with(['variantes' => fn ($q) => $q->activo()]);
+                $q->activo()->orderBy('orden')->with(['variantes' => fn ($q) => $q->activo()->orderBy('orden')]);
             }])
+            ->orderBy('orden')
             ->get();
 
         $combos = Combo::activo()
