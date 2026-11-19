@@ -145,7 +145,11 @@ class SeparacionController extends Controller
 
         return [
             'fecha_corte' => config('separacion.fecha_corte'),
-            'hoy' => $cajaHoy ? SeparacionService::resumenCaja($cajaHoy) : null,
+            // "Hoy" se muestra por proveedor (y por rubro solo lo que no tiene
+            // proveedor), igual que al separar la caja.
+            'hoy' => $cajaHoy
+                ? array_merge(SeparacionService::resumenCaja($cajaHoy), ['lineas' => SeparacionService::lineasSeparacion($cajaHoy)])
+                : null,
             'proveedores' => ProveedorService::listado(soloActivos: true),
             'grupos' => $grupos,
             'total_general' => round(array_sum(array_column($grupos, 'monto_acumulado')), 2),

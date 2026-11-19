@@ -294,12 +294,16 @@ function nombreProveedor(id: number | null) {
                         </Button>
                     </CardHeader>
                     <CardContent>
-                        <p v-if="!data?.hoy || !data.hoy.grupos.length" class="text-sm text-muted-foreground">
+                        <p v-if="!data?.hoy || !(data.hoy.lineas ?? data.hoy.grupos).length" class="text-sm text-muted-foreground">
                             Todavía no hay insumos vendidos en esta caja.
                         </p>
 
                         <div v-else class="flex flex-col divide-y">
-                            <div v-for="g in data.hoy.grupos" :key="g.grupo" class="flex items-start justify-between gap-3 py-2 text-sm">
+                            <div
+                                v-for="g in data.hoy.lineas ?? data.hoy.grupos"
+                                :key="('tipo' in g ? g.tipo : 'rubro') + (('proveedor_id' in g && g.proveedor_id) || g.grupo)"
+                                class="flex items-start justify-between gap-3 py-2 text-sm"
+                            >
                                 <div class="min-w-0">
                                     <p class="font-medium">{{ g.label }}</p>
                                     <p class="text-xs text-muted-foreground">
