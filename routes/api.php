@@ -116,6 +116,7 @@ Route::middleware(['web', 'auth'])->group(function () {
         Route::post('/', [ProveedorController::class, 'store']);
         Route::put('{proveedor}', [ProveedorController::class, 'update']);
         Route::put('{proveedor}/insumos', [ProveedorController::class, 'asignarInsumos']);
+        Route::put('{proveedor}/gastos', [ProveedorController::class, 'asignarGastos']);
         Route::get('{proveedor}/movimientos', [ProveedorController::class, 'movimientos']);
         Route::post('{proveedor}/movimientos', [ProveedorController::class, 'registrarMovimiento']);
     });

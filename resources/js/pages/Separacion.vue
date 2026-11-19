@@ -104,6 +104,19 @@ const formProveedor = reactive({
 });
 const editandoProveedor = ref(false);
 
+// Gastos por jornada (carbón, criolla) que se pueden separar en un proveedor.
+interface GastoJornada {
+    id: number;
+    nombre: string;
+    negocio: string;
+    periodicidad: string;
+    monto_jornada: number | null;
+    proveedor_id: number | null;
+    activo: boolean;
+}
+const gastos = ref<GastoJornada[]>([]);
+const gastosSel = ref<Record<number, boolean>>({});
+
 // Asignación de insumos del proveedor seleccionado.
 const asignacion = ref<Record<number, { incluido: boolean; unidad_compra: string; equivalencia_compra: number | '' }>>({});
 
@@ -129,6 +142,7 @@ const TIPO_LABELS: Record<string, string> = {
 async function cargarProveedores() {
     proveedores.value = (await get<EstadoProveedor[]>('/api/proveedores')) ?? [];
     insumos.value = (await get<InsumoAdmin[]>('/api/admin/insumos')) ?? [];
+    gastos.value = ((await get<GastoJornada[]>('/api/admin/gastos-fijos')) ?? []).filter((g) => g.periodicidad === 'jornada');
 
     if (proveedorSelId.value === null && proveedores.value.length) {
         await seleccionarProveedor(proveedores.value[0].id);
@@ -144,6 +158,7 @@ async function abrirTabProveedores() {
 
 function armarAsignacion() {
     const p = proveedorSel.value;
+    gastosSel.value = Object.fromEntries(gastos.value.map((g) => [g.id, p !== null && g.proveedor_id === p.id]));
     asignacion.value = Object.fromEntries(
         insumos.value.map((i) => [
             i.id,
@@ -232,6 +247,22 @@ async function guardarAsignacion() {
     }
 }
 
+async function guardarGastos() {
+    if (!proveedorSel.value) return;
+
+    const ids = Object.entries(gastosSel.value)
+        .filter(([, incluido]) => incluido)
+        .map(([id]) => Number(id));
+
+    const res = await put<GastoJornada[]>(`/api/proveedores/${proveedorSel.value.id}/gastos`, { gastos: ids });
+
+    if (res) {
+        aviso.value = `Gastos de ${proveedorSel.value.nombre} actualizados.`;
+        await cargarProveedores();
+        await cargar();
+    }
+}
+
 function nombreProveedor(id: number | null) {
     return proveedores.value.find((p) => p.id === id)?.nombre ?? null;
 }
@@ -313,7 +344,7 @@ function nombreProveedor(id: number | null) {
                                         </span>
                                     </p>
                                     <p class="text-xs text-muted-foreground">
-                                        <template v-for="(u, j) in g.insumos" :key="u.insumo_id">
+                                        <template v-for="(u, j) in g.insumos" :key="u.insumo_id ?? `g${u.gasto_fijo_id}`">
                                             {{ j > 0 ? ' · ' : '' }}{{ g.insumos.length > 1 ? u.nombre + ': ' : '' }}{{ fmtUnidades(u) }}
                                         </template>
                                     </p>
@@ -322,7 +353,7 @@ function nombreProveedor(id: number | null) {
                             </div>
                             <div class="flex justify-between pt-2 text-sm font-semibold">
                                 <span>Total insumos</span>
-                                <span class="tabular-nums">{{ fmt(data.hoy.total) }}</span>
+                                <span class="tabular-nums">{{ fmt(data.hoy.lineas ? data.hoy.lineas.reduce((a, l) => a + Number(l.monto), 0) : data.hoy.total) }}</span>
                             </div>
                         </div>
                     </CardContent>
@@ -409,7 +440,7 @@ function nombreProveedor(id: number | null) {
                                     Hoy:
                                     <span class="text-foreground">
                                         <template v-if="p.unidades_hoy.length">
-                                            <template v-for="(u, j) in p.unidades_hoy" :key="u.insumo_id">
+                                            <template v-for="(u, j) in p.unidades_hoy" :key="u.insumo_id ?? `g${u.gasto_fijo_id}`">
                                                 {{ j > 0 ? ' · ' : '' }}{{ fmtUnidades(u) }} → {{ fmt(u.monto) }}
                                             </template>
                                         </template>
@@ -421,7 +452,7 @@ function nombreProveedor(id: number | null) {
                                     }}{{ p.ultimo_pago ? ` (${fecha(p.ultimo_pago.fecha)})` : '' }}:
                                     <span class="text-foreground">
                                         <template v-if="p.unidades_desde_ultimo_pago.length">
-                                            <template v-for="(u, j) in p.unidades_desde_ultimo_pago" :key="u.insumo_id">
+                                            <template v-for="(u, j) in p.unidades_desde_ultimo_pago" :key="u.insumo_id ?? `g${u.gasto_fijo_id}`">
                                                 {{ j > 0 ? ' · ' : '' }}{{ fmtUnidades(u) }} → {{ fmt(u.monto) }}
                                             </template>
                                         </template>
@@ -703,6 +734,42 @@ function nombreProveedor(id: number | null) {
                                     <Button size="sm" :disabled="loading" @click="guardarAsignacion"
                                         ><Check class="mr-1 h-4 w-4" /> Guardar insumos</Button
                                     >
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card v-if="gastos.length">
+                            <CardHeader class="pb-2">
+                                <CardTitle class="text-sm font-medium">Gastos por jornada que se separan acá</CardTitle>
+                                <p class="text-xs text-muted-foreground">
+                                    Cada día que vende su negocio, el monto de la jornada se suma al sobre de ese negocio en este proveedor. Ej:
+                                    carbón y criolla en "Varios parrilla". Sigue contando como gasto fijo en la ganancia.
+                                </p>
+                            </CardHeader>
+                            <CardContent class="overflow-x-auto p-0">
+                                <table class="w-full text-sm">
+                                    <tbody>
+                                        <tr
+                                            v-for="g in gastos"
+                                            :key="g.id"
+                                            class="border-b last:border-0"
+                                            :class="{ 'opacity-50': (g.proveedor_id && g.proveedor_id !== proveedorSel.id && !gastosSel[g.id]) || !g.activo }"
+                                        >
+                                            <td class="w-8 p-2"><input v-model="gastosSel[g.id]" type="checkbox" class="h-4 w-4" /></td>
+                                            <td class="p-2">
+                                                {{ g.nombre }}
+                                                <span v-if="g.proveedor_id && g.proveedor_id !== proveedorSel.id" class="text-xs text-muted-foreground">
+                                                    ({{ nombreProveedor(g.proveedor_id) }})
+                                                </span>
+                                                <span v-if="!g.activo" class="text-xs text-muted-foreground"> · inactivo</span>
+                                            </td>
+                                            <td class="p-2 text-muted-foreground">{{ NOMBRES_NEGOCIO[g.negocio] ?? g.negocio }}</td>
+                                            <td class="p-2 text-right tabular-nums">{{ fmt(g.monto_jornada ?? 0) }} / jornada</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <div class="flex justify-end p-3">
+                                    <Button size="sm" :disabled="loading" @click="guardarGastos"><Check class="mr-1 h-4 w-4" /> Guardar gastos</Button>
                                 </div>
                             </CardContent>
                         </Card>

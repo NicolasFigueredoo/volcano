@@ -1,7 +1,9 @@
 // Tipos compartidos del módulo de separación de insumos / proveedores.
 
 export interface UnidadesInsumo {
-    insumo_id: number;
+    // null en las filas que vienen de un gasto por jornada (carbón, criolla).
+    insumo_id: number | null;
+    gasto_fijo_id?: number;
     nombre: string | null;
     grupo: string;
     proveedor_id: number | null;
@@ -123,6 +125,9 @@ const fmtCantidad = (n: number) => Number(n).toLocaleString('es-AR', { maximumFr
 
 /** "16 medallón · 1,6 kg" */
 export function fmtUnidades(u: UnidadesInsumo): string {
+    // Gasto por jornada (carbón, criolla): se muestra el monto.
+    if (u.gasto_fijo_id) return fmtPesos(u.monto);
+
     let txt = `${fmtCantidad(u.cantidad)} ${u.unidad ?? ''}`.trim();
 
     if (u.unidad_compra && u.cantidad_compra !== null) {

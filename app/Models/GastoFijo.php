@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class GastoFijo extends Model
 {
@@ -17,7 +18,7 @@ class GastoFijo extends Model
      */
     public const PERIODICIDADES = ['mensual', 'jornada'];
 
-    protected $fillable = ['nombre', 'negocio', 'periodicidad', 'monto_jornada', 'monto_mensual', 'dias_apertura_mes', 'activo'];
+    protected $fillable = ['nombre', 'negocio', 'proveedor_id', 'periodicidad', 'monto_jornada', 'monto_mensual', 'dias_apertura_mes', 'activo'];
 
     protected $casts = [
         'monto_mensual' => 'decimal:2',
@@ -38,6 +39,12 @@ class GastoFijo extends Model
                 $gasto->monto_mensual = (float) $gasto->monto_jornada * max(1, (int) $gasto->dias_apertura_mes);
             }
         });
+    }
+
+    /** Proveedor en el que se separa la plata de este gasto (solo por jornada). */
+    public function proveedor(): BelongsTo
+    {
+        return $this->belongsTo(Proveedor::class);
     }
 
     // Costo por día de apertura

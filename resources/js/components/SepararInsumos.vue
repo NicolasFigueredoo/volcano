@@ -160,7 +160,7 @@ async function confirmar() {
                                     <span class="text-xs font-normal text-muted-foreground">{{ dia.lineas![i].tipo === 'proveedor' ? 'proveedor' : 'rubro' }}</span>
                                 </p>
                                 <p class="text-xs text-muted-foreground">
-                                    <template v-for="(u, j) in dia.lineas![i].insumos" :key="u.insumo_id">
+                                    <template v-for="(u, j) in dia.lineas![i].insumos" :key="u.insumo_id ?? `g${u.gasto_fijo_id}`">
                                         {{ j > 0 ? ' · ' : '' }}{{ u.nombre }}: {{ fmtUnidades(u) }}
                                     </template>
                                 </p>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\GastoFijo;
 use App\Models\Insumo;
 use App\Models\Proveedor;
 use App\Models\ProveedorMovimiento;
@@ -83,6 +84,30 @@ class ProveedorController extends Controller
         }
 
         return response()->json(ProveedorService::estado($proveedor->fresh()));
+    }
+
+    /**
+     * PUT /api/proveedores/{proveedor}/gastos  Body: { gastos: [id, ...] }
+     *
+     * Gastos por jornada cuya plata se separa en este proveedor (ej. carbón y
+     * criolla en "Varios parrilla"). Los que se destildan quedan sin proveedor.
+     */
+    public function asignarGastos(Request $request, Proveedor $proveedor): JsonResponse
+    {
+        $data = $request->validate([
+            'gastos' => 'present|array',
+            'gastos.*' => 'integer|exists:gastos_fijos,id',
+        ]);
+
+        GastoFijo::where('proveedor_id', $proveedor->id)
+            ->whereNotIn('id', $data['gastos'])
+            ->update(['proveedor_id' => null]);
+
+        GastoFijo::whereIn('id', $data['gastos'])
+            ->where('periodicidad', 'jornada')
+            ->update(['proveedor_id' => $proveedor->id]);
+
+        return response()->json(GastoFijo::orderBy('id')->get());
     }
 
     /**

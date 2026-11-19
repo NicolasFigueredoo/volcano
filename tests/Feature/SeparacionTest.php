@@ -275,3 +275,37 @@ it('separa la plata de la caja por negocio (burger y parrilla)', function () {
         ->and($monto('parrilla', 'pan'))->toEqual(400.0)
         ->and($lineas->where('negocio', 'parrilla'))->toHaveCount(2);
 });
+
+it('suma los gastos por jornada asignados a un proveedor al sobre de su negocio', function () {
+    $ctx = escenarioSeparacion();
+    $admin = usuarioConRol('admin');
+
+    $parrilla = Categoria::create(['nombre' => 'Parrilla', 'negocio' => 'parrilla', 'orden' => 2]);
+    $chori = Variante::create([
+        'producto_id' => Producto::create(['categoria_id' => $parrilla->id, 'nombre' => 'Choripán', 'activo' => true])->id,
+        'nombre' => 'Único',
+        'precio_venta' => 2500,
+        'costo_calculado' => 0,
+        'activo' => true,
+    ]);
+    Receta::create(['variante_id' => $chori->id, 'insumo_id' => $ctx['pan']->id, 'cantidad' => 1]);
+
+    $varios = App\Models\Proveedor::create(['nombre' => 'Varios parrilla', 'modalidad' => 'contado']);
+    $carbon = App\Models\GastoFijo::create(['nombre' => 'Carbón', 'negocio' => 'parrilla', 'periodicidad' => 'jornada', 'monto_jornada' => 3500, 'dias_apertura_mes' => 16, 'activo' => true]);
+    $criolla = App\Models\GastoFijo::create(['nombre' => 'Criolla y chimi', 'negocio' => 'parrilla', 'periodicidad' => 'jornada', 'monto_jornada' => 4500, 'dias_apertura_mes' => 16, 'activo' => true]);
+
+    $this->actingAs($admin)->putJson("/api/proveedores/{$varios->id}/gastos", ['gastos' => [$carbon->id, $criolla->id]])->assertOk();
+
+    // Solo vendió la burger: los gastos de la parrilla no se separan.
+    ventaPagada($ctx);
+    $lineas = collect(App\Services\SeparacionService::lineasSeparacion($ctx['caja']));
+    expect($lineas->where('proveedor_id', $varios->id))->toHaveCount(0);
+
+    // Vendió la parrilla: aparecen en su sobre, una sola vez por jornada.
+    Venta::registrarEnCaja($ctx['caja'], ['estado' => 'pagado'], [['variante_id' => $chori->id, 'cantidad' => 3]], [['metodo' => 'efectivo', 'monto' => 7500]], $ctx['cajero']->id);
+    $linea = collect(App\Services\SeparacionService::lineasSeparacion($ctx['caja']))->firstWhere('proveedor_id', $varios->id);
+
+    expect($linea['negocio'])->toBe('parrilla')
+        ->and((float) $linea['monto'])->toEqual(8000.0)
+        ->and($linea['insumos'])->toHaveCount(2);
+});

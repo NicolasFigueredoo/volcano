@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Caja;
 use App\Models\CajaSeparacion;
 use App\Models\Categoria;
+use App\Models\GastoFijo;
 use App\Models\Insumo;
 use App\Models\Proveedor;
 use App\Models\Reposicion;
@@ -408,6 +409,43 @@ class SeparacionService
                 'insumos' => $filas->values()->all(),
             ])
             ->sortBy(fn ($l) => array_search($l['grupo'], Insumo::GRUPOS_SEPARACION, true));
+
+        // Gastos por jornada del negocio que se separan en un proveedor (carbón,
+        // criolla): se suman a la línea de ese proveedor o arman una propia.
+        $gastos = GastoFijo::where('activo', true)
+            ->where('periodicidad', 'jornada')
+            ->where('negocio', $negocio)
+            ->whereNotNull('proveedor_id')
+            ->get();
+
+        foreach ($gastos->groupBy('proveedor_id') as $proveedorId => $deProveedor) {
+            $filas = $deProveedor->map(fn (GastoFijo $g) => [
+                'insumo_id' => null,
+                'gasto_fijo_id' => $g->id,
+                'nombre' => $g->nombre,
+                'grupo' => 'varios',
+                'proveedor_id' => (int) $proveedorId,
+                'unidad' => 'jornada',
+                'cantidad' => 1,
+                'monto' => round((float) $g->monto_jornada, 2),
+                'unidad_compra' => null,
+                'cantidad_compra' => null,
+            ])->values()->all();
+
+            $linea = $conProveedor->get($proveedorId) ?? [
+                'negocio' => $negocio,
+                'tipo' => 'proveedor',
+                'proveedor_id' => (int) $proveedorId,
+                'grupo' => null,
+                'label' => Proveedor::find($proveedorId)?->nombre ?? 'Proveedor',
+                'monto' => 0.0,
+                'insumos' => [],
+            ];
+
+            $linea['insumos'] = array_merge($linea['insumos'], $filas);
+            $linea['monto'] = round($linea['monto'] + array_sum(array_column($filas, 'monto')), 2);
+            $conProveedor->put($proveedorId, $linea);
+        }
 
         return $conProveedor->values()->concat($sinProveedor->values())->all();
     }
