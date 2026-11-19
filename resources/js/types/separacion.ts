@@ -20,6 +20,7 @@ export interface GrupoDia {
 }
 
 export interface LineaSeparacion {
+    negocio?: string;
     tipo: 'proveedor' | 'rubro';
     proveedor_id: number | null;
     grupo: string | null;
@@ -32,9 +33,15 @@ export interface SeparacionCaja {
     id: number;
     fecha: string | null;
     total: number;
-    detalle: { proveedor_id?: number | null; grupo?: string | null; label?: string; monto: number }[];
+    detalle: { negocio?: string | null; proveedor_id?: number | null; grupo?: string | null; label?: string; monto: number }[];
     usuario: string | null;
 }
+
+export const NOMBRES_NEGOCIO: Record<string, string> = {
+    burger: 'Burger',
+    parrilla: 'Parrilla',
+    general: 'Compartido',
+};
 
 export interface ResumenDia {
     caja: { id: number; fecha_operativa: string | null; estado: string; antes_del_corte: boolean };

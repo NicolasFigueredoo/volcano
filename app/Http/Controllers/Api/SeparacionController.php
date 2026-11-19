@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Caja;
+use App\Models\Categoria;
 use App\Models\Insumo;
 use App\Models\User;
 use App\Services\ProveedorService;
@@ -88,7 +89,7 @@ class SeparacionController extends Controller
     /**
      * POST /api/separacion/caja/{caja}/confirmar
      *
-     * Body: { lineas: [{ proveedor_id?, grupo?, label?, monto }] }
+     * Body: { lineas: [{ negocio?, proveedor_id?, grupo?, label?, monto }] }
      */
     public function confirmar(Request $request, Caja $caja): JsonResponse
     {
@@ -98,6 +99,7 @@ class SeparacionController extends Controller
 
         $data = $request->validate([
             'lineas' => 'required|array|min:1',
+            'lineas.*.negocio' => ['nullable', Rule::in(Categoria::NEGOCIOS)],
             'lineas.*.proveedor_id' => 'nullable|integer|exists:proveedores,id',
             'lineas.*.grupo' => ['nullable', Rule::in(Insumo::GRUPOS_SEPARACION)],
             'lineas.*.label' => 'nullable|string|max:100',

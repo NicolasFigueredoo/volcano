@@ -315,7 +315,8 @@ class ProveedorService
                     'monto' => $linea['monto'],
                     'caja_id' => $caja->id,
                     'user_id' => $userId,
-                    'observacion' => 'Separación caja '.$fecha,
+                    'observacion' => 'Separación caja '.$fecha
+                        .(isset($linea['negocio']) ? ' ('.(['burger' => 'burger', 'parrilla' => 'parrilla', 'general' => 'compartido'][$linea['negocio']] ?? $linea['negocio']).')' : ''),
                 ]);
             }
 

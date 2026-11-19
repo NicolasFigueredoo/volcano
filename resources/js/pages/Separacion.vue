@@ -8,6 +8,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import {
     fmtPesos as fmt,
     fmtUnidades,
+    NOMBRES_NEGOCIO,
     type EstadoProveedor,
     type MovimientoProveedor,
     type ResultadoMovimiento,
@@ -301,11 +302,16 @@ function nombreProveedor(id: number | null) {
                         <div v-else class="flex flex-col divide-y">
                             <div
                                 v-for="g in data.hoy.lineas ?? data.hoy.grupos"
-                                :key="('tipo' in g ? g.tipo : 'rubro') + (('proveedor_id' in g && g.proveedor_id) || g.grupo)"
+                                :key="('negocio' in g ? g.negocio : '') + ('tipo' in g ? g.tipo : 'rubro') + (('proveedor_id' in g && g.proveedor_id) || g.grupo)"
                                 class="flex items-start justify-between gap-3 py-2 text-sm"
                             >
                                 <div class="min-w-0">
-                                    <p class="font-medium">{{ g.label }}</p>
+                                    <p class="font-medium">
+                                        {{ g.label }}
+                                        <span v-if="'negocio' in g && g.negocio && g.negocio !== 'burger'" class="text-xs font-normal text-muted-foreground">
+                                            · {{ NOMBRES_NEGOCIO[g.negocio] ?? g.negocio }}
+                                        </span>
+                                    </p>
                                     <p class="text-xs text-muted-foreground">
                                         <template v-for="(u, j) in g.insumos" :key="u.insumo_id">
                                             {{ j > 0 ? ' · ' : '' }}{{ g.insumos.length > 1 ? u.nombre + ': ' : '' }}{{ fmtUnidades(u) }}

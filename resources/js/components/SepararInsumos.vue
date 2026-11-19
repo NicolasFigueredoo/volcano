@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
 import { useApi } from '@/composables/useApi';
-import { fmtPesos as fmt, fmtUnidades, type ResumenDia } from '@/types/separacion';
+import { fmtPesos as fmt, fmtUnidades, NOMBRES_NEGOCIO, type ResumenDia } from '@/types/separacion';
 import { Check, PiggyBank, X } from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
 
 // Modal "Separar insumos" de una caja: lista lo que hay que apartar por
-// proveedor/rubro según su venta_insumos y genera las separaciones.
+// negocio (un sobre para la burger y otro para la parrilla) y, dentro de cada
+// uno, por proveedor/rubro según su venta_insumos.
 
 const props = defineProps<{ cajaId?: number | null }>();
 const emit = defineEmits<{ close: []; confirmada: [] }>();
@@ -18,9 +19,39 @@ const filas = ref<{ key: string; incluir: boolean; monto: number }[]>([]);
 
 const total = computed(() => filas.value.reduce((acc, f) => acc + (f.incluir ? Number(f.monto) || 0 : 0), 0));
 
+const nombreNegocio = (n?: string | null) => NOMBRES_NEGOCIO[n ?? 'burger'] ?? n ?? 'Burger';
+
+// Bloques por negocio con el índice de cada línea (filas[i] va en paralelo a lineas[i]).
+const bloques = computed(() => {
+    const out: { negocio: string; indices: number[] }[] = [];
+    (dia.value?.lineas ?? []).forEach((l, i) => {
+        const negocio = l.negocio ?? 'burger';
+        let b = out.find((x) => x.negocio === negocio);
+        if (!b) out.push((b = { negocio, indices: [] }));
+        b.indices.push(i);
+    });
+    return out;
+});
+
+const subtotal = (indices: number[]) =>
+    indices.reduce((acc, i) => acc + (filas.value[i]?.incluir ? Number(filas.value[i].monto) || 0 : 0), 0);
+
+// Lo ya separado, agrupado por negocio.
+const separadoPorNegocio = computed(() => {
+    const out: { negocio: string; lineas: { label: string; monto: number }[]; total: number }[] = [];
+    for (const l of dia.value?.separacion?.detalle ?? []) {
+        const negocio = l.negocio ?? 'burger';
+        let b = out.find((x) => x.negocio === negocio);
+        if (!b) out.push((b = { negocio, lineas: [], total: 0 }));
+        b.lineas.push({ label: l.label ?? l.grupo ?? '', monto: Number(l.monto) });
+        b.total += Number(l.monto);
+    }
+    return out;
+});
+
 function cargarFilas() {
     filas.value = (dia.value?.lineas ?? []).map((l) => ({
-        key: l.proveedor_id ? `p${l.proveedor_id}` : `g${l.grupo}`,
+        key: `${l.negocio ?? 'burger'}-${l.proveedor_id ? `p${l.proveedor_id}` : `g${l.grupo}`}`,
         incluir: true,
         monto: Math.round(l.monto),
     }));
@@ -38,6 +69,7 @@ async function confirmar() {
 
     const lineas = (dia.value.lineas ?? [])
         .map((l, i) => ({
+            negocio: l.negocio ?? 'burger',
             proveedor_id: l.proveedor_id,
             grupo: l.grupo,
             label: l.label,
@@ -84,9 +116,18 @@ async function confirmar() {
                         Esta caja ya se separó el {{ new Date(dia.separacion.fecha ?? '').toLocaleString('es-AR') }}
                         <template v-if="dia.separacion.usuario"> por {{ dia.separacion.usuario }}</template>.
                     </p>
-                    <div v-for="(l, i) in dia.separacion.detalle" :key="i" class="flex justify-between text-sm">
-                        <span>{{ l.label ?? l.grupo }}</span>
-                        <span class="tabular-nums">{{ fmt(l.monto) }}</span>
+                    <div v-for="b in separadoPorNegocio" :key="b.negocio" class="flex flex-col gap-1">
+                        <p v-if="separadoPorNegocio.length > 1" class="text-xs font-semibold uppercase text-muted-foreground">
+                            Sobre {{ nombreNegocio(b.negocio) }}
+                        </p>
+                        <div v-for="(l, i) in b.lineas" :key="i" class="flex justify-between text-sm">
+                            <span>{{ l.label }}</span>
+                            <span class="tabular-nums">{{ fmt(l.monto) }}</span>
+                        </div>
+                        <div v-if="separadoPorNegocio.length > 1" class="flex justify-between text-sm font-medium">
+                            <span>Total {{ nombreNegocio(b.negocio) }}</span>
+                            <span class="tabular-nums">{{ fmt(b.total) }}</span>
+                        </div>
                     </div>
                     <div class="flex justify-between border-t pt-2 font-semibold">
                         <span>Total separado</span>
@@ -106,28 +147,34 @@ async function confirmar() {
 
                     <p v-if="!(dia.lineas ?? []).length" class="text-sm text-muted-foreground">Esta caja no tiene insumos vendidos para separar.</p>
 
-                    <div v-for="(l, i) in dia.lineas ?? []" :key="filas[i]?.key" class="flex items-start gap-3 rounded border p-3">
-                        <input v-model="filas[i].incluir" type="checkbox" class="mt-1 h-4 w-4" />
-                        <div class="min-w-0 flex-1">
-                            <p class="text-sm font-medium">
-                                {{ l.label }}
-                                <span class="text-xs font-normal text-muted-foreground">{{ l.tipo === 'proveedor' ? 'proveedor' : 'rubro' }}</span>
-                            </p>
-                            <p class="text-xs text-muted-foreground">
-                                <template v-for="(u, j) in l.insumos" :key="u.insumo_id">
-                                    {{ j > 0 ? ' · ' : '' }}{{ u.nombre }}: {{ fmtUnidades(u) }}
-                                </template>
-                            </p>
-                            <p class="text-xs text-muted-foreground">Calculado: {{ fmt(l.monto) }}</p>
+                    <div v-for="b in bloques" :key="b.negocio" class="flex flex-col gap-2">
+                        <div class="flex items-center justify-between">
+                            <p class="text-sm font-semibold">Sobre {{ nombreNegocio(b.negocio) }}</p>
+                            <p class="text-sm font-semibold tabular-nums">{{ fmt(subtotal(b.indices)) }}</p>
                         </div>
-                        <input
-                            v-model.number="filas[i].monto"
-                            type="number"
-                            min="0"
-                            step="1"
-                            :disabled="!filas[i].incluir"
-                            class="w-28 rounded border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums disabled:opacity-50"
-                        />
+                        <div v-for="i in b.indices" :key="filas[i]?.key" class="flex items-start gap-3 rounded border p-3">
+                            <input v-model="filas[i].incluir" type="checkbox" class="mt-1 h-4 w-4" />
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-medium">
+                                    {{ dia.lineas![i].label }}
+                                    <span class="text-xs font-normal text-muted-foreground">{{ dia.lineas![i].tipo === 'proveedor' ? 'proveedor' : 'rubro' }}</span>
+                                </p>
+                                <p class="text-xs text-muted-foreground">
+                                    <template v-for="(u, j) in dia.lineas![i].insumos" :key="u.insumo_id">
+                                        {{ j > 0 ? ' · ' : '' }}{{ u.nombre }}: {{ fmtUnidades(u) }}
+                                    </template>
+                                </p>
+                                <p class="text-xs text-muted-foreground">Calculado: {{ fmt(dia.lineas![i].monto) }}</p>
+                            </div>
+                            <input
+                                v-model.number="filas[i].monto"
+                                type="number"
+                                min="0"
+                                step="1"
+                                :disabled="!filas[i].incluir"
+                                class="w-28 rounded border border-input bg-background px-2 py-1.5 text-right text-sm tabular-nums disabled:opacity-50"
+                            />
+                        </div>
                     </div>
 
                     <div class="flex items-center justify-between border-t pt-3">

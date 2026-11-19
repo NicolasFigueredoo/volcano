@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Caja;
 use App\Models\CajaSeparacion;
+use App\Models\Categoria;
 use App\Models\Insumo;
 use App\Models\Proveedor;
 use App\Models\Reposicion;
@@ -100,24 +101,29 @@ class SeparacionService
                     continue;
                 }
 
-                $lineas[$insumo->id] ??= [
+                $negocio = $detalle->negocio ?: 'burger';
+                $clave = $insumo->id.'|'.$negocio;
+
+                $lineas[$clave] ??= [
                     'insumo' => $insumo,
+                    'negocio' => $negocio,
                     'cantidad' => 0.0,
                 ];
 
-                $lineas[$insumo->id]['cantidad'] += (float) $receta->cantidad * (int) $detalle->cantidad;
+                $lineas[$clave]['cantidad'] += (float) $receta->cantidad * (int) $detalle->cantidad;
             }
         }
 
         // Cantidades ya liquidadas en una reposición (solo al regenerar).
         $liquidadas = $venta->insumos()
             ->whereNotNull('reposicion_id')
-            ->selectRaw('insumo_id, SUM(cantidad) as cantidad')
-            ->groupBy('insumo_id')
-            ->pluck('cantidad', 'insumo_id');
+            ->selectRaw('insumo_id, negocio, SUM(cantidad) as cantidad')
+            ->groupBy('insumo_id', 'negocio')
+            ->get()
+            ->mapWithKeys(fn ($f) => [$f->insumo_id.'|'.$f->negocio => (float) $f->cantidad]);
 
-        foreach ($lineas as $insumoId => $linea) {
-            $cantidad = round($linea['cantidad'] - (float) ($liquidadas[$insumoId] ?? 0), 3);
+        foreach ($lineas as $clave => $linea) {
+            $cantidad = round($linea['cantidad'] - (float) ($liquidadas[$clave] ?? 0), 3);
 
             if ($cantidad <= 0) {
                 continue;
@@ -130,6 +136,7 @@ class SeparacionService
                 'venta_id' => $venta->id,
                 'caja_id' => $venta->caja_id,
                 'insumo_id' => $insumo->id,
+                'negocio' => $linea['negocio'],
                 'grupo_separacion' => $insumo->grupo_separacion ?: 'varios',
                 'cantidad' => $cantidad,
                 'costo_unitario' => $costo,
@@ -344,8 +351,10 @@ class SeparacionService
     }
 
     /**
-     * Líneas sugeridas para separar la plata de una caja: una por proveedor
-     * (sus insumos) y una por rubro para los insumos sin proveedor.
+     * Líneas sugeridas para separar la plata de una caja, por negocio (burger,
+     * parrilla): en cada uno, una por proveedor (sus insumos) y una por rubro
+     * para los insumos sin proveedor. Un proveedor que surte a los dos (el
+     * carnicero) aparece una vez en cada negocio.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -353,7 +362,21 @@ class SeparacionService
     {
         self::completarSnapshots($caja);
 
-        $insumos = collect(self::unidadesPorInsumo(VentaInsumo::where('venta_insumos.caja_id', $caja->id)));
+        return VentaInsumo::where('caja_id', $caja->id)->distinct()->pluck('negocio')
+            ->sortBy(fn (string $n) => array_search($n, Categoria::NEGOCIOS, true))
+            ->flatMap(fn (string $negocio) => self::lineasDeNegocio($caja, $negocio))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private static function lineasDeNegocio(Caja $caja, string $negocio): array
+    {
+        $insumos = collect(self::unidadesPorInsumo(
+            VentaInsumo::where('venta_insumos.caja_id', $caja->id)->where('venta_insumos.negocio', $negocio)
+        ));
 
         $proveedores = Proveedor::whereIn('id', $insumos->pluck('proveedor_id')->filter()->unique())
             ->get()
@@ -363,6 +386,7 @@ class SeparacionService
             ->whereNotNull('proveedor_id')
             ->groupBy('proveedor_id')
             ->map(fn ($filas, $proveedorId) => [
+                'negocio' => $negocio,
                 'tipo' => 'proveedor',
                 'proveedor_id' => (int) $proveedorId,
                 'grupo' => null,
@@ -375,6 +399,7 @@ class SeparacionService
             ->whereNull('proveedor_id')
             ->groupBy('grupo')
             ->map(fn ($filas, $grupo) => [
+                'negocio' => $negocio,
                 'tipo' => 'rubro',
                 'proveedor_id' => null,
                 'grupo' => $grupo,

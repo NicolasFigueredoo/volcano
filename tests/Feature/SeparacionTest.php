@@ -237,3 +237,41 @@ it('rechaza un grupo inexistente', function () {
 
     $this->actingAs($admin)->postJson('/api/separacion/inexistente/reponer', [])->assertStatus(422);
 });
+
+it('separa la plata de la caja por negocio (burger y parrilla)', function () {
+    $ctx = escenarioSeparacion();
+
+    $parrilla = Categoria::create(['nombre' => 'Parrilla', 'negocio' => 'parrilla', 'orden' => 2]);
+    $sanguche = Variante::create([
+        'producto_id' => Producto::create(['categoria_id' => $parrilla->id, 'nombre' => 'Sanguche', 'activo' => true])->id,
+        'nombre' => 'Único',
+        'precio_venta' => 9000,
+        'costo_calculado' => 0,
+        'activo' => true,
+    ]);
+    // Comparte la carne con la burger: 2 medallones + 1 pan.
+    Receta::create(['variante_id' => $sanguche->id, 'insumo_id' => $ctx['carne']->id, 'cantidad' => 2]);
+    Receta::create(['variante_id' => $sanguche->id, 'insumo_id' => $ctx['pan']->id, 'cantidad' => 1]);
+
+    Venta::registrarEnCaja(
+        $ctx['caja'],
+        ['estado' => 'pagado'],
+        [
+            ['variante_id' => $ctx['variante']->id, 'cantidad' => 1],
+            ['variante_id' => $sanguche->id, 'cantidad' => 1],
+        ],
+        [['metodo' => 'efectivo', 'monto' => 14000]],
+        $ctx['cajero']->id
+    );
+
+    $lineas = collect(App\Services\SeparacionService::lineasSeparacion($ctx['caja']));
+    $monto = fn (string $negocio, string $grupo) => (float) $lineas
+        ->first(fn ($l) => $l['negocio'] === $negocio && $l['grupo'] === $grupo)['monto'];
+
+    expect($monto('burger', 'carne'))->toEqual(1000.0)
+        ->and($monto('burger', 'pan'))->toEqual(400.0)
+        ->and($monto('burger', 'descartables'))->toEqual(100.0)
+        ->and($monto('parrilla', 'carne'))->toEqual(2000.0)
+        ->and($monto('parrilla', 'pan'))->toEqual(400.0)
+        ->and($lineas->where('negocio', 'parrilla'))->toHaveCount(2);
+});

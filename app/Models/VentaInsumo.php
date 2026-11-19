@@ -19,6 +19,7 @@ class VentaInsumo extends Model
         'venta_id',
         'caja_id',
         'insumo_id',
+        'negocio',
         'grupo_separacion',
         'cantidad',
         'costo_unitario',

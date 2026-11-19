@@ -290,6 +290,30 @@ async function cerrarManual(caja: Caja) {
     if (res) separandoCaja.value = caja.id;
 }
 
+// ── Caja: separación sugerida por negocio ────────────────────────────────────
+
+const NOMBRES_NEGOCIO_CAJA: Record<string, string> = { burger: 'Burger', parrilla: 'Parrilla', general: 'Compartido' };
+
+// Mismos porcentajes que la separación total (10% ahorro, 40% retiro, 50%
+// negocio de la ganancia neta), calculados con la ganancia de cada negocio.
+const separacionPorNegocio = computed(() => {
+    const por = data.value?.stats.por_negocio ?? {};
+    return Object.keys(NOMBRES_NEGOCIO_CAJA)
+        .filter((n) => por[n] && (Number(por[n].ventas) !== 0 || Number(por[n].gastos_fijos) !== 0))
+        .map((n) => {
+            const neta = Number(por[n].ganancia_neta) || 0;
+            return {
+                negocio: n,
+                nombre: NOMBRES_NEGOCIO_CAJA[n],
+                neta,
+                reponer_insumos: Number(por[n].costo_insumos) || 0,
+                ahorro: Math.max(0, Math.round(neta * 0.1)),
+                retiro: Math.max(0, Math.round(neta * 0.4)),
+                negocio_monto: Math.max(0, Math.round(neta * 0.5)),
+            };
+        });
+});
+
 // ── Caja: separar insumos ────────────────────────────────────────────────────
 
 // Id de la caja cuyo modal "Separar insumos" está abierto.
@@ -674,26 +698,40 @@ onMounted(cargar);
 
             <DesgloseNegocios v-if="esAdmin && data?.stats.por_negocio" :por-negocio="data.stats.por_negocio" />
 
-            <!-- Separación sugerida -->
+            <!-- Separación sugerida: una por negocio (burger / parrilla / compartido) y el total -->
             <Card v-if="esAdmin && data?.stats.separacion">
                 <CardHeader class="pb-2"><CardTitle class="text-sm">Separación sugerida</CardTitle></CardHeader>
-                <CardContent class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                    <div>
-                        <p class="text-xs text-muted-foreground">Reponer insumos</p>
-                        <p class="font-semibold">{{ fmt(data.stats.separacion.reponer_insumos) }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-muted-foreground">Ahorro 10%</p>
-                        <p class="font-semibold">{{ fmt(data.stats.separacion.ahorro) }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-muted-foreground">Retiro 40%</p>
-                        <p class="font-semibold">{{ fmt(data.stats.separacion.retiro) }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-muted-foreground">Negocio</p>
-                        <p class="font-semibold">{{ fmt(data.stats.separacion.negocio) }}</p>
-                    </div>
+                <CardContent class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="text-xs text-muted-foreground">
+                                <th class="py-1 pr-3 text-left font-normal"></th>
+                                <th class="py-1 px-2 text-right font-normal">Reponer insumos</th>
+                                <th class="py-1 px-2 text-right font-normal">Ahorro 10%</th>
+                                <th class="py-1 px-2 text-right font-normal">Retiro 40%</th>
+                                <th class="py-1 pl-2 text-right font-normal">Negocio</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="f in separacionPorNegocio" :key="f.negocio" class="border-t">
+                                <td class="py-1.5 pr-3 font-medium">{{ f.nombre }}</td>
+                                <td class="py-1.5 px-2 text-right tabular-nums">{{ fmt(f.reponer_insumos) }}</td>
+                                <td class="py-1.5 px-2 text-right tabular-nums">{{ fmt(f.ahorro) }}</td>
+                                <td class="py-1.5 px-2 text-right tabular-nums">{{ fmt(f.retiro) }}</td>
+                                <td class="py-1.5 pl-2 text-right tabular-nums">{{ fmt(f.negocio_monto) }}</td>
+                            </tr>
+                            <tr class="border-t font-semibold">
+                                <td class="py-1.5 pr-3">Total</td>
+                                <td class="py-1.5 px-2 text-right tabular-nums">{{ fmt(data.stats.separacion.reponer_insumos) }}</td>
+                                <td class="py-1.5 px-2 text-right tabular-nums">{{ fmt(data.stats.separacion.ahorro) }}</td>
+                                <td class="py-1.5 px-2 text-right tabular-nums">{{ fmt(data.stats.separacion.retiro) }}</td>
+                                <td class="py-1.5 pl-2 text-right tabular-nums">{{ fmt(data.stats.separacion.negocio) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-if="separacionPorNegocio.some((f) => f.neta < 0)" class="mt-2 text-xs text-muted-foreground">
+                        Un negocio con ganancia neta negativa no aparta ahorro ni retiro; por eso el total puede no ser la suma.
+                    </p>
                 </CardContent>
             </Card>
 
