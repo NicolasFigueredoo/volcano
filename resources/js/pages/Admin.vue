@@ -103,6 +103,7 @@ const GRUPOS_SEPARACION: [string, string][] = [
     ['vacio', 'Vacío (parrilla)'],
     ['bondiola', 'Bondiola'],
     ['chorizo', 'Chorizo'],
+    ['chinchulin', 'Chinchulín'],
     ['pan_sanguche', 'Pan de sanguche'],
     ['varios', 'Varios'],
 ];
