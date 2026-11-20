@@ -1,0 +1,11 @@
+{
+    "name": "Volcano",
+    "short_name": "Volcano",
+    "start_url": "/pos",
+    "display": "standalone",
+    "background_color": "#161210",
+    "theme_color": "#161210",
+    "icons": [
+        { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    ]
+}

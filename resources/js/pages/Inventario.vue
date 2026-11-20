@@ -57,7 +57,7 @@ onMounted(cargar);
 
 <template>
     <AppLayout :breadcrumbs="[{ title: 'Inventario', href: '/inventario' }]">
-        <div class="p-4 flex gap-4">
+        <div class="p-3 sm:p-4 flex gap-4">
 
             <!-- Tabla -->
             <div class="flex-1 flex flex-col gap-4 min-w-0">
@@ -72,15 +72,15 @@ onMounted(cargar);
                 </div>
 
                 <Card>
-                    <CardContent class="p-0">
+                    <CardContent class="overflow-x-auto p-0">
                         <div v-if="loading" class="p-4 text-sm text-muted-foreground">Cargando...</div>
                         <table v-else class="w-full text-sm">
                             <thead>
                                 <tr class="border-b text-xs text-muted-foreground">
                                     <th class="text-left p-3 font-medium">Insumo</th>
-                                    <th class="text-left p-3 font-medium">Unidad</th>
+                                    <th class="hidden sm:table-cell text-left p-3 font-medium">Unidad</th>
                                     <th class="text-right p-3 font-medium">Stock</th>
-                                    <th class="text-right p-3 font-medium">Mín.</th>
+                                    <th class="hidden sm:table-cell text-right p-3 font-medium">Mín.</th>
                                     <th class="text-center p-3 font-medium">Estado</th>
                                     <th class="p-3"></th>
                                 </tr>
@@ -90,19 +90,24 @@ onMounted(cargar);
                                     class="border-b last:border-0 hover:bg-muted/50"
                                     :class="{ 'bg-destructive/5': insumo.estado_stock === 'falta' }"
                                 >
-                                    <td class="p-3 font-medium">{{ insumo.nombre }}</td>
-                                    <td class="p-3 text-muted-foreground">{{ insumo.unidad }}</td>
+                                    <td class="p-3 font-medium">
+                                        {{ insumo.nombre }}
+                                        <span class="block text-xs font-normal text-muted-foreground sm:hidden">
+                                            {{ insumo.unidad }} · mín. {{ insumo.stock_minimo }}
+                                        </span>
+                                    </td>
+                                    <td class="hidden sm:table-cell p-3 text-muted-foreground">{{ insumo.unidad }}</td>
                                     <td class="p-3 text-right font-mono">{{ insumo.stock_actual }}</td>
-                                    <td class="p-3 text-right text-muted-foreground font-mono">{{ insumo.stock_minimo }}</td>
+                                    <td class="hidden sm:table-cell p-3 text-right text-muted-foreground font-mono">{{ insumo.stock_minimo }}</td>
                                     <td class="p-3 text-center">
-                                        <span class="text-xs px-2 py-0.5 rounded-full border" :class="badgeClass(insumo.estado_stock)">
+                                        <span class="text-xs px-2 py-0.5 rounded-full border whitespace-nowrap" :class="badgeClass(insumo.estado_stock)">
                                             {{ badgeLabel(insumo.estado_stock) }}
                                         </span>
                                     </td>
                                     <td class="p-3">
                                         <div class="flex gap-1 justify-end">
-                                            <Button size="icon" variant="ghost" class="h-7 w-7" @click="abrirPanel(insumo, 'entrada')" title="Entrada"><Plus class="w-3 h-3" /></Button>
-                                            <Button size="icon" variant="ghost" class="h-7 w-7" @click="abrirPanel(insumo, 'ajuste')" title="Ajustar"><Pencil class="w-3 h-3" /></Button>
+                                            <Button size="icon" variant="ghost" class="h-9 w-9 sm:h-7 sm:w-7" @click="abrirPanel(insumo, 'entrada')" title="Entrada"><Plus class="w-3 h-3" /></Button>
+                                            <Button size="icon" variant="ghost" class="h-9 w-9 sm:h-7 sm:w-7" @click="abrirPanel(insumo, 'ajuste')" title="Ajustar"><Pencil class="w-3 h-3" /></Button>
                                         </div>
                                     </td>
                                 </tr>
@@ -113,7 +118,8 @@ onMounted(cargar);
             </div>
 
             <!-- Panel lateral (sin Dialog/radix) -->
-            <div v-if="panel" class="w-64 shrink-0">
+            <div v-if="panel" class="panel-movil-fondo" @click="panel = null" />
+            <div v-if="panel" class="panel-movil">
                 <Card>
                     <CardHeader class="pb-2">
                         <div class="flex items-center justify-between">

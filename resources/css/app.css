@@ -2,6 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Formato app en celular: espacio para la barra de abajo y paneles que suben desde abajo. */
+@layer utilities {
+    .pb-nav {
+        padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+    }
+    .bottom-nav {
+        bottom: calc(4.75rem + env(safe-area-inset-bottom));
+    }
+    .no-scrollbar {
+        scrollbar-width: none;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    @media (min-width: 768px) {
+        .pb-nav {
+            padding-bottom: 0;
+        }
+        .bottom-nav {
+            bottom: 1rem;
+        }
+    }
+}
+
+@layer components {
+    /* Panel lateral en compu; en celular/tablet, hoja que sube desde abajo. */
+    .panel-movil {
+        @apply fixed inset-x-0 bottom-0 z-50 max-h-[88dvh] overflow-y-auto rounded-t-2xl bg-background p-2 shadow-2xl;
+        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    }
+    .panel-movil-fondo {
+        @apply fixed inset-0 z-40 bg-black/60 lg:hidden;
+    }
+    @media (min-width: 1024px) {
+        .panel-movil {
+            @apply static z-auto max-h-none w-80 shrink-0 overflow-visible rounded-none bg-transparent p-0 shadow-none;
+        }
+    }
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=Instrument+Sans:wght@400;500;600&display=swap');
 
 body,

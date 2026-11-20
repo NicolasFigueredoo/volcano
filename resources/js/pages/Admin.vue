@@ -553,7 +553,7 @@ const margenActual = computed(() => {
 
 <template>
     <AppLayout :breadcrumbs="[{ title: 'Admin', href: '/admin' }]">
-        <div class="p-4 flex gap-4 min-h-0">
+        <div class="p-3 sm:p-4 flex gap-4 min-h-0">
             <div class="flex-1 flex flex-col gap-4 min-w-0">
                 <!-- Tabs -->
                 <div class="flex gap-2 flex-wrap">
@@ -806,16 +806,16 @@ const margenActual = computed(() => {
                     </Button>
 
                     <Card>
-                        <CardContent class="p-0">
+                        <CardContent class="overflow-x-auto p-0">
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="border-b text-xs text-muted-foreground">
                                         <th class="text-left p-3 font-medium">Nombre</th>
-                                        <th class="text-left p-3 font-medium">Unidad</th>
-                                        <th class="text-left p-3 font-medium">Grupo</th>
+                                        <th class="hidden sm:table-cell text-left p-3 font-medium">Unidad</th>
+                                        <th class="hidden sm:table-cell text-left p-3 font-medium">Grupo</th>
                                         <th class="text-right p-3 font-medium">Costo unit.</th>
-                                        <th class="text-right p-3 font-medium">Stock mín.</th>
-                                        <th class="text-center p-3 font-medium">Descuenta stock</th>
+                                        <th class="hidden sm:table-cell text-right p-3 font-medium">Stock mín.</th>
+                                        <th class="text-center p-3 font-medium"><span class="sm:hidden">Desc.</span><span class="hidden sm:inline">Descuenta stock</span></th>
                                         <th class="p-3"></th>
                                     </tr>
                                 </thead>
@@ -828,13 +828,16 @@ const margenActual = computed(() => {
                                     >
                                         <td class="p-3 font-medium">
                                             {{ ins.nombre }}
+                                            <span class="block text-xs font-normal text-muted-foreground sm:hidden">
+                                                {{ ins.unidad }} · {{ (GRUPOS_SEPARACION.find(([v]) => v === (ins.grupo_separacion ?? 'varios')) ?? ['', 'Varios'])[1] }}
+                                            </span>
                                         </td>
 
-                                        <td class="p-3 text-muted-foreground">
+                                        <td class="hidden sm:table-cell p-3 text-muted-foreground">
                                             {{ ins.unidad }}
                                         </td>
 
-                                        <td class="p-3">
+                                        <td class="hidden sm:table-cell p-3">
                                             <span class="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                                                 {{ (GRUPOS_SEPARACION.find(([v]) => v === (ins.grupo_separacion ?? 'varios')) ?? ['', 'Varios'])[1] }}
                                             </span>
@@ -844,7 +847,7 @@ const margenActual = computed(() => {
                                             {{ fmt(ins.costo_unitario) }}
                                         </td>
 
-                                        <td class="p-3 text-right text-muted-foreground">
+                                        <td class="hidden sm:table-cell p-3 text-right text-muted-foreground">
                                             {{ fmtNumero(ins.stock_minimo) }}
                                         </td>
 
@@ -893,14 +896,14 @@ const margenActual = computed(() => {
                     </div>
 
                     <Card>
-                        <CardContent class="p-0">
+                        <CardContent class="overflow-x-auto p-0">
                             <table class="w-full text-sm">
                                 <thead>
                                     <tr class="border-b text-xs text-muted-foreground">
                                         <th class="text-left p-3 font-medium">Nombre</th>
-                                        <th class="text-left p-3 font-medium">Negocio</th>
-                                        <th class="text-right p-3 font-medium">Monto</th>
-                                        <th class="text-right p-3 font-medium">Días/mes</th>
+                                        <th class="hidden sm:table-cell text-left p-3 font-medium">Negocio</th>
+                                        <th class="hidden sm:table-cell text-right p-3 font-medium">Monto</th>
+                                        <th class="hidden sm:table-cell text-right p-3 font-medium">Días/mes</th>
                                         <th class="text-right p-3 font-medium">Por día</th>
                                         <th class="text-center p-3 font-medium">Activo</th>
                                         <th class="p-3"></th>
@@ -916,9 +919,19 @@ const margenActual = computed(() => {
                                     >
                                         <td class="p-3 font-medium">
                                             {{ g.nombre }}
+                                            <span class="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-normal text-muted-foreground sm:hidden">
+                                                <span
+                                                    class="px-2 py-0.5 rounded-full border"
+                                                    :class="colorNegocio[g.negocio ?? 'compartido']"
+                                                >
+                                                    {{ etiquetaNegocio[g.negocio ?? 'compartido'] }}
+                                                </span>
+                                                <template v-if="g.periodicidad === 'jornada'">{{ fmt(g.monto_jornada) }}/jornada</template>
+                                                <template v-else>{{ fmt(g.monto_mensual) }}/mes · {{ fmtNumero(g.dias_apertura_mes) }} días</template>
+                                            </span>
                                         </td>
 
-                                        <td class="p-3">
+                                        <td class="hidden sm:table-cell p-3">
                                             <span
                                                 class="text-xs px-2 py-0.5 rounded-full border"
                                                 :class="colorNegocio[g.negocio ?? 'compartido']"
@@ -927,7 +940,7 @@ const margenActual = computed(() => {
                                             </span>
                                         </td>
 
-                                        <td class="p-3 text-right whitespace-nowrap">
+                                        <td class="hidden sm:table-cell p-3 text-right whitespace-nowrap">
                                             <template v-if="g.periodicidad === 'jornada'">
                                                 {{ fmt(g.monto_jornada) }}
                                                 <span class="text-xs text-muted-foreground">/jornada</span>
@@ -938,7 +951,7 @@ const margenActual = computed(() => {
                                             </template>
                                         </td>
 
-                                        <td class="p-3 text-right text-muted-foreground">
+                                        <td class="hidden sm:table-cell p-3 text-right text-muted-foreground">
                                             {{ fmtNumero(g.dias_apertura_mes) }}
                                         </td>
 
@@ -1180,7 +1193,7 @@ const margenActual = computed(() => {
                         </h3>
 
                         <Card>
-                            <CardContent class="p-0">
+                            <CardContent class="overflow-x-auto p-0">
                                 <table class="w-full text-sm">
                                     <thead>
                                         <tr class="border-b text-xs text-muted-foreground">
@@ -1230,7 +1243,8 @@ const margenActual = computed(() => {
             </div>
 
             <!-- PANEL LATERAL -->
-            <div v-if="panel" class="w-80 shrink-0">
+            <div v-if="panel" class="panel-movil-fondo" @click="cerrarPanel" />
+            <div v-if="panel" class="panel-movil">
                 <Card>
                     <CardHeader class="pb-2">
                         <div class="flex items-center justify-between">

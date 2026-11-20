@@ -119,6 +119,9 @@ const mesa = ref('');
 const notas = ref('');
 const descuento10 = ref(false);
 const confirmado = ref(false);
+// En celular el pedido se abre como pantalla aparte.
+const verPedido = ref(false);
+const cantidadTotal = computed(() => pedido.value.reduce((n, l) => n + l.cantidad, 0));
 const pagoEfectivo = ref(0);
 const pagoTransferencia = ref(0);
 const pagoModo = ref<'total' | 'mixto'>('total');
@@ -403,6 +406,7 @@ async function cobrar() {
 
     if (res) {
         confirmado.value = true;
+        verPedido.value = false;
         ultimoNumero.value = res.numero_orden ?? null;
         limpiarPedido();
         await cargarPedidosActivos();
@@ -439,21 +443,23 @@ async function avanzarEstado(venta: Venta) {
             <p v-if="ultimoNumero" class="text-6xl font-black">#{{ ultimoNumero }}</p>
         </div>
 
-        <div class="flex h-[calc(100vh-4rem)] gap-4 p-4 overflow-hidden">
-            <div class="flex flex-col flex-1 gap-3 min-w-0 overflow-hidden text-foreground">
-                <!-- Pestañas: una por categoría, todas en una fila -->
-                <div class="grid gap-2" :style="{ gridTemplateColumns: `repeat(${Math.max(tabs.length, 1)}, minmax(0, 1fr))` }">
+        <div class="flex gap-4 p-3 sm:p-4 lg:h-[calc(100vh-4rem)] lg:overflow-hidden">
+            <div class="flex flex-col flex-1 gap-3 min-w-0 pb-20 lg:pb-0 lg:overflow-hidden text-foreground">
+                <!-- Pestañas: una por categoría; en celular quedan fijas arriba y se deslizan -->
+                <div
+                    class="no-scrollbar sticky top-14 z-20 -mx-3 flex shrink-0 gap-2 overflow-x-auto bg-background px-3 py-2 sm:-mx-4 sm:px-4 md:static md:mx-0 md:px-0 md:py-0"
+                >
                     <button
                         v-for="cat in tabs"
                         :key="cat.id"
-                        class="h-16 px-1 rounded-xl border-2 flex flex-col items-center justify-center transition-colors"
+                        class="h-14 sm:h-16 min-w-[4.75rem] flex-1 shrink-0 px-2 rounded-xl border-2 flex flex-col items-center justify-center transition-colors"
                         :class="categoriaActiva === cat.id
                             ? 'bg-primary text-primary-foreground border-primary'
                             : 'border-input text-foreground hover:bg-muted'"
                         @click="categoriaActiva = cat.id"
                     >
                         <span v-if="emojiTab(cat)" class="text-2xl leading-none">{{ emojiTab(cat) }}</span>
-                        <span class="text-base font-bold leading-tight whitespace-nowrap">{{ cat.nombre }}</span>
+                        <span class="text-xs sm:text-sm xl:text-base font-bold leading-tight whitespace-nowrap md:whitespace-normal md:text-center">{{ cat.nombre }}</span>
                     </button>
                 </div>
 
@@ -461,15 +467,18 @@ async function avanzarEstado(venta: Venta) {
                     Cargando menú...
                 </div>
 
-                <div v-else class="flex flex-col gap-4 min-h-0 overflow-y-auto pr-1">
+                <div v-else class="flex flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
                     <!-- Productos: si tiene varios tamaños, una tarjeta con un botón por tamaño -->
-                    <div v-if="categoriaActivaData" class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+                    <div
+                        v-if="categoriaActivaData"
+                        class="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] sm:gap-3"
+                    >
                         <template v-for="producto in categoriaActivaData.productos" :key="producto.id">
                             <div
                                 v-if="variantesVisibles(producto).length > 1"
-                                class="rounded-xl border-2 border-border bg-card text-card-foreground p-3 flex flex-col gap-2"
+                                class="col-span-2 sm:col-span-1 rounded-xl border-2 border-border bg-card text-card-foreground p-3 flex flex-col gap-2"
                             >
-                                <p class="text-xl font-bold leading-tight">{{ producto.nombre }}</p>
+                                <p class="text-lg sm:text-xl font-bold leading-tight">{{ producto.nombre }}</p>
 
                                 <div
                                     class="grid gap-2"
@@ -500,7 +509,7 @@ async function avanzarEstado(venta: Venta) {
                                 <button
                                     v-for="variante in variantesVisibles(producto)"
                                     :key="variante.id"
-                                    class="relative text-left rounded-xl border-2 bg-card text-card-foreground p-4 min-h-28 flex flex-col justify-between transition-colors active:scale-[0.98]"
+                                    class="relative text-left rounded-xl border-2 bg-card text-card-foreground p-3 sm:p-4 min-h-24 sm:min-h-28 flex flex-col justify-between transition-colors active:scale-[0.98]"
                                     :class="cantidadEnPedido(variante.id) ? 'border-primary' : 'border-border hover:border-primary/60'"
                                     @click="agregarVariante(variante, producto.nombre, 0, 1, producto.id)"
                                 >
@@ -512,11 +521,11 @@ async function avanzarEstado(venta: Venta) {
                                     </span>
 
                                     <span>
-                                        <span class="block text-xl font-bold leading-tight pr-10">{{ producto.nombre }}</span>
-                                        <span class="block text-base text-muted-foreground">{{ variante.nombre }}</span>
+                                        <span class="block text-base sm:text-xl font-bold leading-tight pr-9">{{ producto.nombre }}</span>
+                                        <span class="block text-sm sm:text-base text-muted-foreground">{{ variante.nombre }}</span>
                                     </span>
 
-                                    <span class="block text-xl font-bold mt-2">{{ fmt(variante.precio_venta) }}</span>
+                                    <span class="block text-lg sm:text-xl font-bold mt-2">{{ fmt(variante.precio_venta) }}</span>
                                 </button>
                             </template>
                         </template>
@@ -526,7 +535,7 @@ async function avanzarEstado(venta: Venta) {
                     <template v-if="combos.length && categoriaActiva === categoriaConCombos">
                         <h3 class="font-semibold text-lg">Combos</h3>
 
-                        <div class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2 sm:gap-3">
                             <button
                                 v-for="combo in combos"
                                 :key="combo.id"
@@ -634,12 +643,41 @@ async function avanzarEstado(venta: Venta) {
                 </div>
             </div>
 
-            <!-- Pedido -->
-            <div class="w-80 xl:w-96 flex flex-col shrink-0">
+            <!-- Botón flotante para abrir el pedido (celular / tablet) -->
+            <button
+                v-if="!verPedido"
+                class="bottom-nav fixed inset-x-3 z-30 flex h-14 items-center justify-between gap-3 rounded-2xl bg-primary px-4 text-primary-foreground shadow-xl transition-transform active:scale-[0.98] lg:hidden"
+                @click="verPedido = true"
+            >
+                <span class="flex items-center gap-2 text-base font-semibold">
+                    <span class="flex h-8 min-w-8 items-center justify-center rounded-full bg-black/20 px-2 text-sm font-bold">
+                        {{ cantidadTotal }}
+                    </span>
+                    Ver pedido
+                </span>
+                <span class="text-xl font-black">{{ fmt(total) }}</span>
+            </button>
+
+            <!-- Pedido: columna a la derecha en compu, pantalla completa en celular -->
+            <div
+                class="lg:flex lg:w-80 xl:w-96 lg:shrink-0 flex-col"
+                :class="verPedido
+                    ? 'fixed inset-0 z-50 flex bg-background p-2 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:static lg:z-auto lg:bg-transparent lg:p-0'
+                    : 'hidden'"
+            >
                 <Card class="flex-1 flex flex-col overflow-hidden">
                     <CardContent class="flex flex-col gap-3 p-4 h-full overflow-hidden">
                         <div class="flex items-center justify-between">
-                            <span class="text-xl font-bold">Pedido</span>
+                            <span class="flex items-center gap-1 text-xl font-bold">
+                                <button
+                                    class="-ml-2 flex h-10 w-10 items-center justify-center rounded-full hover:bg-muted lg:hidden"
+                                    aria-label="Volver al menú"
+                                    @click="verPedido = false"
+                                >
+                                    <ChevronDown class="h-6 w-6" />
+                                </button>
+                                Pedido
+                            </span>
                             <button
                                 class="h-10 px-3 rounded-lg text-sm text-muted-foreground hover:bg-muted flex items-center gap-1"
                                 @click="pedirLimpiar"

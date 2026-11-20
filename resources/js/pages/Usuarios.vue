@@ -106,20 +106,23 @@ onMounted(cargar);
                 <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
 
                 <Card>
-                    <CardContent class="p-0">
+                    <CardContent class="overflow-x-auto p-0">
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="border-b text-xs text-muted-foreground">
                                     <th class="text-left p-3 font-medium">Nombre</th>
-                                    <th class="text-left p-3 font-medium">Email</th>
+                                    <th class="hidden sm:table-cell text-left p-3 font-medium">Email</th>
                                     <th class="text-left p-3 font-medium">Rol</th>
                                     <th class="text-right p-3 font-medium">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-for="usuario in usuarios" :key="usuario.id" class="border-b last:border-0 hover:bg-muted/50">
-                                    <td class="p-3 font-medium">{{ usuario.name }}</td>
-                                    <td class="p-3 text-muted-foreground">{{ usuario.email }}</td>
+                                    <td class="p-3 font-medium">
+                                        {{ usuario.name }}
+                                        <span class="block text-xs font-normal text-muted-foreground break-all sm:hidden">{{ usuario.email }}</span>
+                                    </td>
+                                    <td class="hidden sm:table-cell p-3 text-muted-foreground">{{ usuario.email }}</td>
                                     <td class="p-3">
                                         <span class="text-xs px-2 py-0.5 rounded-full border"
                                             :class="usuario.role === 'admin'
@@ -129,8 +132,8 @@ onMounted(cargar);
                                         </span>
                                     </td>
                                     <td class="p-3 text-right">
-                                        <Button size="icon" variant="ghost" class="h-7 w-7" @click="editar(usuario)"><Pencil class="w-3 h-3"/></Button>
-                                        <Button size="icon" variant="ghost" class="h-7 w-7 text-destructive" @click="eliminar(usuario)"><Trash2 class="w-3 h-3"/></Button>
+                                        <Button size="icon" variant="ghost" class="h-9 w-9 sm:h-7 sm:w-7" @click="editar(usuario)"><Pencil class="w-3 h-3"/></Button>
+                                        <Button size="icon" variant="ghost" class="h-9 w-9 sm:h-7 sm:w-7 text-destructive" @click="eliminar(usuario)"><Trash2 class="w-3 h-3"/></Button>
                                     </td>
                                 </tr>
                                 <tr v-if="!usuarios.length">
@@ -142,7 +145,8 @@ onMounted(cargar);
                 </Card>
             </div>
 
-            <div v-if="panel" class="w-80 shrink-0">
+            <div v-if="panel" class="panel-movil-fondo" @click="cerrar" />
+            <div v-if="panel" class="panel-movil">
                 <Card>
                     <CardHeader class="pb-2">
                         <div class="flex items-center justify-between">

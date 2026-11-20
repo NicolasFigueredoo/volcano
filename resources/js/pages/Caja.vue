@@ -837,7 +837,7 @@ onMounted(cargar);
 
                 <div v-if="!ventasHoy.length" class="text-xs text-muted-foreground">Sin pedidos hoy</div>
 
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                <div class="grid grid-cols-1 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     <Card
                         v-for="venta in ventasOrdenadas"
                         :key="venta.id"
@@ -912,10 +912,10 @@ onMounted(cargar);
             <!-- Alertas de compra -->
             <Card v-if="esAdmin && alertasCompra.length">
                 <CardHeader class="pb-2"><CardTitle class="text-sm text-destructive">⚠ Insumos a comprar</CardTitle></CardHeader>
-                <CardContent class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <div v-for="a in alertasCompra" :key="a.nombre" class="text-xs flex justify-between border rounded px-2 py-1">
-                        <span>{{ a.nombre }}</span>
-                        <span class="font-medium" :class="a.estado === 'falta' ? 'text-destructive' : 'text-yellow-600'">
+                <CardContent class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    <div v-for="a in alertasCompra" :key="a.nombre" class="text-xs flex justify-between gap-2 border rounded px-2 py-1.5">
+                        <span class="min-w-0">{{ a.nombre }}</span>
+                        <span class="font-medium text-right shrink-0" :class="a.estado === 'falta' ? 'text-destructive' : 'text-yellow-600'">
                             {{ a.stock_actual }} / {{ a.stock_minimo }} {{ a.unidad }}
                         </span>
                     </div>
@@ -932,7 +932,7 @@ onMounted(cargar);
             <!-- Ventas de hoy (tabla admin) -->
             <Card v-if="esAdmin">
                 <CardHeader class="pb-2"><CardTitle class="text-base">Ventas de hoy</CardTitle></CardHeader>
-                <CardContent class="p-0">
+                <CardContent class="overflow-x-auto p-0">
                     <div v-if="loading" class="p-4 text-sm text-muted-foreground">Cargando...</div>
                     <div v-else-if="!ventasHoy.length" class="p-4 text-sm text-muted-foreground text-center">Sin ventas</div>
 
@@ -1002,7 +1002,7 @@ onMounted(cargar);
             <!-- Historial de cajas -->
             <Card v-if="esAdmin">
                 <CardHeader class="pb-2"><CardTitle class="text-base">Historial de cajas</CardTitle></CardHeader>
-                <CardContent class="p-0">
+                <CardContent class="overflow-x-auto p-0">
                     <div v-if="!historial.length" class="p-4 text-sm text-muted-foreground text-center">Sin historial</div>
 
                     <table v-else class="w-full text-sm">
@@ -1407,7 +1407,7 @@ onMounted(cargar);
 
                         <Card v-if="cajaDetalle.resumen?.productos_top?.length">
                             <CardHeader class="pb-2"><CardTitle class="text-sm">Productos más vendidos</CardTitle></CardHeader>
-                            <CardContent class="p-0">
+                            <CardContent class="overflow-x-auto p-0">
                                 <table class="w-full text-sm">
                                     <thead>
                                         <tr class="border-b text-xs text-muted-foreground">
@@ -1429,7 +1429,7 @@ onMounted(cargar);
 
                         <Card>
                             <CardHeader class="pb-2"><CardTitle class="text-sm">Ventas de esta caja</CardTitle></CardHeader>
-                            <CardContent class="p-0">
+                            <CardContent class="overflow-x-auto p-0">
                                 <div v-if="!cajaDetalle.ventas.length" class="p-4 text-sm text-muted-foreground text-center">
                                     Esta caja no tiene ventas asociadas.
                                 </div>
