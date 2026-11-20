@@ -52,13 +52,13 @@ class NegocioService
         }
 
         $gastos = self::repartirGastos(
-            vendieron: collect(['burger', 'parrilla'])->filter(fn ($n) => $resultado[$n]['unidades'] > 0)->values()->all(),
+            vendieron: self::vendieron($resultado),
             gastosTotal: $gastosTotal,
         );
 
         foreach ($resultado as $negocio => $fila) {
             $bruta = $fila['ventas'] - $fila['costo_insumos'];
-            $gasto = $gastos[$negocio] ?? 0.0;
+            $gasto = $gastos['totales'][$negocio] ?? 0.0;
 
             $resultado[$negocio] = [
                 'ventas' => round($fila['ventas'], 2),
@@ -67,6 +67,7 @@ class NegocioService
                 'gastos_fijos' => round($gasto, 2),
                 'ganancia_neta' => round($bruta - $gasto, 2),
                 'unidades' => $fila['unidades'],
+                'gastos_detalle' => $gastos['detalle'][$negocio] ?? [],
             ];
         }
 
@@ -74,34 +75,86 @@ class NegocioService
     }
 
     /**
+     * Le agrega el detalle de gastos fijos a un desglose guardado de una caja
+     * vieja que no lo tenía. Usa los gastos actuales, escalados para que cada
+     * negocio sume lo mismo que se guardó.
+     *
+     * @param  array<string, array<string, mixed>>  $porNegocio
+     * @return array<string, array<string, mixed>>
+     */
+    public static function completarDetalle(array $porNegocio): array
+    {
+        $gastos = self::repartirGastos(self::vendieron($porNegocio), null);
+
+        foreach ($porNegocio as $negocio => $fila) {
+            if (isset($fila['gastos_detalle'])) {
+                continue;
+            }
+
+            $guardado = (float) ($fila['gastos_fijos'] ?? 0);
+            $actual = (float) ($gastos['totales'][$negocio] ?? 0);
+            $factor = $actual > 0 ? $guardado / $actual : 0.0;
+
+            $porNegocio[$negocio]['gastos_detalle'] = array_map(
+                fn ($g) => [...$g, 'monto' => round($g['monto'] * $factor, 2)],
+                $factor > 0 ? ($gastos['detalle'][$negocio] ?? []) : [],
+            );
+        }
+
+        return $porNegocio;
+    }
+
+    /** @return list<string> */
+    private static function vendieron(array $filas): array
+    {
+        return collect(['burger', 'parrilla'])
+            ->filter(fn ($n) => ($filas[$n]['unidades'] ?? 0) > 0)
+            ->values()
+            ->all();
+    }
+
+    /**
      * @param  list<string>  $vendieron  negocios (burger/parrilla) con ventas en la caja
-     * @return array<string, float>
+     * @return array{totales: array<string, float>, detalle: array<string, list<array{nombre: string, monto: float, compartido: bool}>>}
      */
     private static function repartirGastos(array $vendieron, ?float $gastosTotal): array
     {
         $reparto = ['burger' => 0.0, 'parrilla' => 0.0, 'general' => 0.0];
+        $detalle = ['burger' => [], 'parrilla' => [], 'general' => []];
         $entre = $vendieron ?: ['burger'];
 
-        foreach (GastoFijo::where('activo', true)->get() as $gasto) {
+        $agregar = function (string $negocio, string $nombre, float $monto, bool $compartido) use (&$reparto, &$detalle) {
+            $reparto[$negocio] = ($reparto[$negocio] ?? 0) + $monto;
+            $detalle[$negocio][] = ['nombre' => $nombre, 'monto' => $monto, 'compartido' => $compartido];
+        };
+
+        foreach (GastoFijo::where('activo', true)->orderBy('nombre')->get() as $gasto) {
             $diario = (float) $gasto->costo_diario;
 
             if ($gasto->negocio === 'compartido') {
                 foreach ($entre as $negocio) {
-                    $reparto[$negocio] += $diario / count($entre);
+                    $agregar($negocio, $gasto->nombre, $diario / count($entre), true);
                 }
             } else {
-                $reparto[$gasto->negocio] = ($reparto[$gasto->negocio] ?? 0) + $diario;
+                $agregar($gasto->negocio, $gasto->nombre, $diario, false);
             }
         }
 
         if ($gastosTotal !== null) {
             $actual = array_sum($reparto);
 
-            $reparto = $actual > 0
-                ? array_map(fn ($v) => $v * $gastosTotal / $actual, $reparto)
-                : ['burger' => $gastosTotal, 'parrilla' => 0.0, 'general' => 0.0];
+            if ($actual > 0) {
+                $factor = $gastosTotal / $actual;
+                $reparto = array_map(fn ($v) => $v * $factor, $reparto);
+                $detalle = array_map(fn ($items) => array_map(fn ($g) => [...$g, 'monto' => $g['monto'] * $factor], $items), $detalle);
+            } else {
+                $reparto = ['burger' => $gastosTotal, 'parrilla' => 0.0, 'general' => 0.0];
+                $detalle = ['burger' => [], 'parrilla' => [], 'general' => []];
+            }
         }
 
-        return $reparto;
+        $detalle = array_map(fn ($items) => array_map(fn ($g) => [...$g, 'monto' => round($g['monto'], 2)], $items), $detalle);
+
+        return ['totales' => $reparto, 'detalle' => $detalle];
     }
 }

@@ -374,8 +374,9 @@ class CajaController extends Controller
                 'ganancia_neta' => $caja->ganancia_neta,
                 // Cajas cerradas antes de la separación por negocio: se arma
                 // con las líneas vendidas y los gastos fijos que se guardaron.
-                'por_negocio' => $caja->resumen_json['por_negocio']
-                    ?? NegocioService::desglose($ventas, (float) $caja->gastos_fijos),
+                'por_negocio' => isset($caja->resumen_json['por_negocio'])
+                    ? NegocioService::completarDetalle($caja->resumen_json['por_negocio'])
+                    : NegocioService::desglose($ventas, (float) $caja->gastos_fijos),
             ],
             'resumen' => $caja->resumen_json ?? [],
         ]);

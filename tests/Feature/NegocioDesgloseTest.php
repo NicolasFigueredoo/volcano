@@ -69,6 +69,11 @@ it('reparte un pedido mezclado entre burger, parrilla y general', function () {
     ])->and($d['general'])->toMatchArray([
         'ventas' => 1800, 'costo_insumos' => 1200, 'gastos_fijos' => 0, 'ganancia_neta' => 600,
     ]);
+
+    // El detalle de gastos fijos dice de dónde sale cada monto.
+    expect(collect($d['burger']['gastos_detalle'])->pluck('monto', 'nombre')->all())
+        ->toEqual(['Alquiler' => 1000, 'Delivery' => 20000])
+        ->and(collect($d['parrilla']['gastos_detalle'])->firstWhere('nombre', 'Alquiler')['compartido'])->toBeTrue();
 });
 
 it('carga todo el alquiler a la burger si la parrilla no vendió', function () {
