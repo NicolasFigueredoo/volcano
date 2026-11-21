@@ -131,9 +131,12 @@ class SeparacionService
             }
 
             $insumo = $linea['insumo'];
-            $costo = (float) $insumo->costo_unitario;
+            // Con una compra de parrilla abierta, aparta según lo pagado.
+            $tanda = TandaService::activa($insumo->id);
+            $costo = $tanda ? (float) $tanda->costo_unitario : (float) $insumo->costo_unitario;
 
             VentaInsumo::create([
+                'tanda_id' => $tanda?->id,
                 'venta_id' => $venta->id,
                 'caja_id' => $venta->caja_id,
                 'insumo_id' => $insumo->id,
@@ -364,6 +367,8 @@ class SeparacionService
         self::completarSnapshots($caja);
 
         return VentaInsumo::where('caja_id', $caja->id)->distinct()->pluck('negocio')
+            ->merge(TandaService::cerradasEnCaja($caja->id)->pluck('negocio'))
+            ->unique()
             ->sortBy(fn (string $n) => array_search($n, Categoria::NEGOCIOS, true))
             ->flatMap(fn (string $negocio) => self::lineasDeNegocio($caja, $negocio))
             ->values()
@@ -378,6 +383,30 @@ class SeparacionService
         $insumos = collect(self::unidadesPorInsumo(
             VentaInsumo::where('venta_insumos.caja_id', $caja->id)->where('venta_insumos.negocio', $negocio)
         ));
+
+        // Compras de parrilla que se terminaron en esta caja: lo que faltó (o
+        // sobró) para llegar a lo pagado va en la misma línea de esa carne.
+        foreach (TandaService::cerradasEnCaja($caja->id, $negocio) as $tanda) {
+            $diferencia = round((float) $tanda->total - (float) $tanda->apartado, 2);
+
+            if (abs($diferencia) < 1 || ! $tanda->insumo) {
+                continue;
+            }
+
+            $insumos->push([
+                'insumo_id' => $tanda->insumo_id,
+                'tanda_id' => $tanda->id,
+                'ajuste' => true,
+                'nombre' => 'Ajuste compra '.$tanda->insumo->nombre,
+                'grupo' => $tanda->insumo->grupo_separacion ?: 'varios',
+                'proveedor_id' => $tanda->insumo->proveedor_id,
+                'unidad' => null,
+                'cantidad' => 0,
+                'monto' => $diferencia,
+                'unidad_compra' => null,
+                'cantidad_compra' => null,
+            ]);
+        }
 
         $proveedores = Proveedor::whereIn('id', $insumos->pluck('proveedor_id')->filter()->unique())
             ->get()

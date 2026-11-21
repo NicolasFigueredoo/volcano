@@ -4,9 +4,11 @@ use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\CajaController;
 use App\Http\Controllers\Api\ComboController;
 use App\Http\Controllers\Api\InventarioController;
+use App\Http\Controllers\Api\NegocioController;
 use App\Http\Controllers\Api\PosController;
 use App\Http\Controllers\Api\ProveedorController;
 use App\Http\Controllers\Api\SeparacionController;
+use App\Http\Controllers\Api\TandaController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -109,6 +111,24 @@ Route::middleware(['web', 'auth'])->group(function () {
             Route::post('{grupo}/reponer', [SeparacionController::class, 'reponer']);
         });
     });
+
+    // ── Compras de parrilla (tandas) ──────────────────────────────
+    // "Se terminó" lo marca también el cajero al cerrar la caja.
+    Route::prefix('tandas')->group(function () {
+        Route::post('{tanda}/cerrar', [TandaController::class, 'cerrar']);
+
+        Route::middleware('es_admin')->group(function () {
+            Route::get('/', [TandaController::class, 'index']);
+            Route::post('/', [TandaController::class, 'store']);
+            Route::put('{tanda}', [TandaController::class, 'update']);
+            Route::delete('{tanda}', [TandaController::class, 'destroy']);
+            Route::post('{tanda}/reabrir', [TandaController::class, 'reabrir']);
+        });
+    });
+
+    // ── Resumen por negocio (solo admin) ──────────────────────────
+    Route::middleware('es_admin')->get('negocio/{negocio}', [NegocioController::class, 'show'])
+        ->whereIn('negocio', ['burger', 'parrilla']);
 
     // ── Proveedores (solo admin) ──────────────────────────────────
     Route::middleware('es_admin')->prefix('proveedores')->group(function () {

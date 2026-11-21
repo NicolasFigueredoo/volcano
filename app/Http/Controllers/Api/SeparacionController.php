@@ -9,6 +9,7 @@ use App\Models\Insumo;
 use App\Models\User;
 use App\Services\ProveedorService;
 use App\Services\SeparacionService;
+use App\Services\TandaService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -129,9 +130,13 @@ class SeparacionController extends Controller
      */
     private function payloadDia(Caja $caja): array
     {
+        $esHoy = SeparacionService::cajaDeHoy()?->id === $caja->id;
+
         return array_merge(SeparacionService::resumenCaja($caja), [
             'lineas' => SeparacionService::lineasSeparacion($caja),
             'separacion' => SeparacionService::separacionDeCaja($caja),
+            // Al separar la caja de hoy se pregunta si cada carne sigue o se terminó.
+            'tandas_abiertas' => $esHoy ? TandaService::abiertas() : [],
         ]);
     }
 

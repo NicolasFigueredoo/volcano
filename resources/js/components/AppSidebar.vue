@@ -16,6 +16,8 @@ import {
     ClipboardList,
     Package,
     PiggyBank,
+    Flame,
+    Sandwich,
     Settings,
     Users,
 } from 'lucide-vue-next';
@@ -40,6 +42,8 @@ const mainNavItems: NavItem[] = [
 ];
 
 const adminNavItems: NavItem[] = [
+    { title: 'Burger', url: '/burger', icon: Sandwich },
+    { title: 'Parrilla', url: '/parrilla', icon: Flame },
     { title: 'Admin', url: '/admin', icon: Settings },
     { title: 'Separación', url: '/separacion', icon: PiggyBank },
     { title: 'Usuarios', url: '/usuarios', icon: Users },

@@ -1,9 +1,14 @@
 // Tipos compartidos del módulo de separación de insumos / proveedores.
 
+import type { Tanda } from './tandas';
+
 export interface UnidadesInsumo {
     // null en las filas que vienen de un gasto por jornada (carbón, criolla).
     insumo_id: number | null;
     gasto_fijo_id?: number;
+    // Ajuste de una compra de parrilla que se terminó en esta caja.
+    ajuste?: boolean;
+    tanda_id?: number;
     nombre: string | null;
     grupo: string;
     proveedor_id: number | null;
@@ -51,6 +56,7 @@ export interface ResumenDia {
     total: number;
     lineas?: LineaSeparacion[];
     separacion?: SeparacionCaja | null;
+    tandas_abiertas?: Tanda[];
 }
 
 export interface InsumoProveedor {
@@ -127,6 +133,7 @@ const fmtCantidad = (n: number) => Number(n).toLocaleString('es-AR', { maximumFr
 export function fmtUnidades(u: UnidadesInsumo): string {
     // Gasto por jornada (carbón, criolla): se muestra el monto.
     if (u.gasto_fijo_id) return fmtPesos(u.monto);
+    if (u.ajuste) return (u.monto >= 0 ? 'faltaban ' : 'sobraron ') + fmtPesos(Math.abs(u.monto));
 
     let txt = `${fmtCantidad(u.cantidad)} ${u.unidad ?? ''}`.trim();
 

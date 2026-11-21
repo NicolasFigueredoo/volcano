@@ -14,6 +14,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/admin', fn () => Inertia::render('Admin'))->name('admin');
         Route::get('/usuarios', fn () => Inertia::render('Usuarios'))->name('usuarios');
         Route::get('/separacion', fn () => Inertia::render('Separacion'))->name('separacion');
+        Route::get('/burger', fn () => Inertia::render('Negocio', ['negocio' => 'burger']))->name('negocio.burger');
+        Route::get('/parrilla', fn () => Inertia::render('Negocio', ['negocio' => 'parrilla']))->name('negocio.parrilla');
     });
 });
 

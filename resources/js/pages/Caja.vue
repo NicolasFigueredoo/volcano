@@ -617,8 +617,8 @@ onMounted(cargar);
                         </Button>
                     </div>
 
-                    <div v-else-if="esAdmin" class="flex items-center gap-2">
-                        <span class="text-xs text-muted-foreground">Modo administrador</span>
+                    <div v-else-if="esAdmin" class="flex flex-wrap items-center gap-2">
+                        <span class="basis-full text-xs text-muted-foreground sm:basis-auto">Modo administrador</span>
 
                         <Button
                             v-if="data?.caja?.estado === 'abierta'"

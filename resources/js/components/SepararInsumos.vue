@@ -2,7 +2,7 @@
 import { Button } from '@/components/ui/button';
 import { useApi } from '@/composables/useApi';
 import { fmtPesos as fmt, fmtUnidades, NOMBRES_NEGOCIO, type ResumenDia } from '@/types/separacion';
-import { Check, PiggyBank, X } from 'lucide-vue-next';
+import { Check, Flame, PiggyBank, X } from 'lucide-vue-next';
 import { computed, onMounted, ref } from 'vue';
 
 // Modal "Separar insumos" de una caja: lista lo que hay que apartar por
@@ -57,12 +57,27 @@ function cargarFilas() {
     }));
 }
 
-onMounted(async () => {
-    const url = props.cajaId ? `/api/separacion/dia?caja_id=${props.cajaId}` : '/api/separacion/dia';
+const url = () => (props.cajaId ? `/api/separacion/dia?caja_id=${props.cajaId}` : '/api/separacion/dia');
 
-    dia.value = await get<ResumenDia>(url);
+onMounted(async () => {
+    dia.value = await get<ResumenDia>(url());
     cargarFilas();
 });
+
+// ── Carnes de parrilla: ¿sigue o se terminó? ─────────────────────────────────
+const siguen = ref<number[]>([]);
+const tandasPendientes = computed(() => (dia.value?.tandas_abiertas ?? []).filter((t) => !siguen.value.includes(t.id)));
+
+async function terminarTanda(id: number) {
+    if (!(await post(`/api/tandas/${id}/cerrar`, {}))) return;
+
+    // Se vuelve a pedir el día: la línea de esa carne ya trae el ajuste.
+    const nuevo = await get<ResumenDia>(url());
+    if (nuevo) {
+        dia.value = nuevo;
+        cargarFilas();
+    }
+}
 
 async function confirmar() {
     if (!dia.value) return;
@@ -145,6 +160,28 @@ async function confirmar() {
                         acá para no contarla dos veces.
                     </p>
 
+                    <div
+                        v-if="(dia.tandas_abiertas ?? []).length"
+                        class="flex flex-col gap-2 rounded-lg border border-orange-500/40 bg-orange-500/5 p-3"
+                    >
+                        <p class="flex items-center gap-1.5 text-sm font-semibold">
+                            <Flame class="h-4 w-4 text-orange-500" /> ¿Queda carne de la parrilla?
+                        </p>
+                        <p v-if="!tandasPendientes.length" class="text-xs text-muted-foreground">Listo, todas siguen para la próxima jornada.</p>
+                        <div v-for="t in tandasPendientes" :key="t.id" class="flex flex-wrap items-center gap-2 rounded border bg-background p-2">
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-medium">{{ t.insumo }}</p>
+                                <p class="text-xs text-muted-foreground">
+                                    {{ t.porciones_vendidas }} de ~{{ t.porciones_estimadas }} vendidos · en el sobre {{ fmt(t.apartado) }} de {{ fmt(t.total) }}
+                                </p>
+                            </div>
+                            <div class="flex gap-1.5">
+                                <Button variant="outline" size="sm" @click="siguen.push(t.id)">Sigue</Button>
+                                <Button size="sm" variant="destructive" :disabled="loading" @click="terminarTanda(t.id)">Se terminó</Button>
+                            </div>
+                        </div>
+                    </div>
+
                     <p v-if="!(dia.lineas ?? []).length" class="text-sm text-muted-foreground">Esta caja no tiene insumos vendidos para separar.</p>
 
                     <div v-for="b in bloques" :key="b.negocio" class="flex flex-col gap-2">
@@ -160,7 +197,10 @@ async function confirmar() {
                                     <span class="text-xs font-normal text-muted-foreground">{{ dia.lineas![i].tipo === 'proveedor' ? 'proveedor' : 'rubro' }}</span>
                                 </p>
                                 <p class="text-xs text-muted-foreground">
-                                    <template v-for="(u, j) in dia.lineas![i].insumos" :key="u.insumo_id ?? `g${u.gasto_fijo_id}`">
+                                    <template
+                                        v-for="(u, j) in dia.lineas![i].insumos"
+                                        :key="u.ajuste ? `t${u.tanda_id}` : (u.insumo_id ?? `g${u.gasto_fijo_id}`)"
+                                    >
                                         {{ j > 0 ? ' · ' : '' }}{{ u.nombre }}: {{ fmtUnidades(u) }}
                                     </template>
                                 </p>

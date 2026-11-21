@@ -25,6 +25,7 @@ class VentaInsumo extends Model
         'costo_unitario',
         'subtotal',
         'reposicion_id',
+        'tanda_id',
     ];
 
     protected $casts = [
@@ -41,6 +42,11 @@ class VentaInsumo extends Model
     public function caja(): BelongsTo
     {
         return $this->belongsTo(Caja::class);
+    }
+
+    public function tanda(): BelongsTo
+    {
+        return $this->belongsTo(Tanda::class);
     }
 
     public function insumo(): BelongsTo
