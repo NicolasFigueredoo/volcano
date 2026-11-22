@@ -129,3 +129,26 @@ it('muestra las cuentas de un solo negocio', function () {
         ->assertJsonPath('totales.jornadas', 0)
         ->assertJsonPath('tandas', null);
 });
+
+it('el cajero elimina pedidos de la caja abierta y salen del sobre, pero no de una caja cerrada', function () {
+    $ctx = escenarioTanda();
+
+    test()->actingAs($ctx['admin'])->postJson('/api/tandas', [
+        'insumo_id' => $ctx['carne']->id, 'cantidad' => 4, 'total' => 28000, 'porciones_estimadas' => 8,
+    ])->assertCreated();
+
+    venderSanguches($ctx, 2);
+    $venta = \App\Models\Venta::latest('id')->first();
+
+    test()->actingAs($ctx['cajero'])->deleteJson("/api/caja/ventas/{$venta->id}")->assertOk();
+
+    expect($venta->fresh()->estado)->toBe('anulado')
+        ->and((float) VentaInsumo::where('insumo_id', $ctx['carne']->id)->sum('subtotal'))->toEqual(0.0);
+
+    venderSanguches($ctx, 1);
+    $otra = \App\Models\Venta::latest('id')->first();
+    Caja::query()->update(['estado' => 'cerrada']);
+
+    test()->actingAs($ctx['cajero'])->deleteJson("/api/caja/ventas/{$otra->id}")->assertForbidden();
+    test()->actingAs($ctx['admin'])->deleteJson("/api/caja/ventas/{$otra->id}")->assertOk();
+});

@@ -497,7 +497,7 @@ async function guardarNuevaVenta() {
 }
 
 async function anularVenta(venta: Venta) {
-    if (!confirm(`¿Anular el pedido #${venta.numero_orden}? Quedará marcado como anulado y no contará en los totales.`)) return;
+    if (!confirm(`¿Eliminar el pedido #${venta.numero_orden}? Queda como anulado: no suma en la caja ni en el sobre.`)) return;
 
     await del(`/api/caja/ventas/${venta.id}`);
 
@@ -863,6 +863,14 @@ onMounted(cargar);
                                         title="Editar pedido"
                                     >
                                         <Pencil class="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                        v-if="venta.estado !== 'anulado'"
+                                        class="ml-0.5 flex h-7 w-7 items-center justify-center rounded border text-destructive hover:bg-destructive/10"
+                                        @click="anularVenta(venta)"
+                                        title="Eliminar pedido"
+                                    >
+                                        <Trash2 class="w-3.5 h-3.5" />
                                     </button>
                                 </div>
                             </div>

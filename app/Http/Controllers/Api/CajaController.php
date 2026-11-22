@@ -706,8 +706,12 @@ class CajaController extends Controller
     {
         $user = Auth::user();
 
-        if (! $user->isAdmin()) {
-            return response()->json(['message' => 'Solo el administrador puede anular ventas.'], 403);
+        // El cajero puede anular pedidos mientras la caja sigue abierta; una
+        // caja ya cerrada solo la toca el administrador.
+        $cajaAbierta = $venta->caja_id && Caja::whereKey($venta->caja_id)->where('estado', 'abierta')->exists();
+
+        if (! $user->isAdmin() && ! $cajaAbierta) {
+            return response()->json(['message' => 'Solo el administrador puede anular pedidos de una caja cerrada.'], 403);
         }
 
         if ($venta->estado === 'anulado') {
