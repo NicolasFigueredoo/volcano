@@ -268,7 +268,8 @@ const unidadCorta = (u: string | null) => (u === 'kg' ? 'kg' : 'u.');
                                 <div>
                                     <div class="flex justify-between text-xs">
                                         <span>En el sobre <b class="tabular-nums">{{ fmt(t.apartado) }}</b></span>
-                                        <span class="text-muted-foreground">falta {{ fmt(t.falta) }}</span>
+                                        <span v-if="t.falta >= 0" class="text-muted-foreground">falta {{ fmt(t.falta) }}</span>
+                                        <span v-else class="text-amber-600 dark:text-amber-400">pasó lo pagado por {{ fmt(-t.falta) }}</span>
                                     </div>
                                     <div class="mt-1 h-2 overflow-hidden rounded-full bg-muted">
                                         <div class="h-full rounded-full bg-orange-500 transition-all" :style="{ width: progreso(t) + '%' }" />

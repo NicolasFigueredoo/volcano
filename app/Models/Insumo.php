@@ -37,6 +37,7 @@ class Insumo extends Model
         'bondiola',
         'chorizo',
         'chinchulin',
+        'pollo',
         'pan_sanguche',
         'varios',
     ];
@@ -53,6 +54,7 @@ class Insumo extends Model
         'bondiola' => 'Bondiola',
         'chorizo' => 'Chorizo',
         'chinchulin' => 'Chinchulín',
+        'pollo' => 'Pollo',
         'pan_sanguche' => 'Pan de sanguche',
         'varios' => 'Varios',
     ];

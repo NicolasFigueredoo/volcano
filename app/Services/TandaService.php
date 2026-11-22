@@ -416,7 +416,7 @@ class TandaService
             ->pluck('insumo_id')
             ->unique();
 
-        $orden = ['vacio', 'bondiola', 'chinchulin', 'chorizo', 'pan_sanguche'];
+        $orden = ['vacio', 'bondiola', 'chinchulin', 'pollo', 'chorizo', 'pan_sanguche'];
 
         return Insumo::whereIn('id', $ids)
             ->where('activo', true)

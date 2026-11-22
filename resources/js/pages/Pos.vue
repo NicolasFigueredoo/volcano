@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { useApi } from '@/composables/useApi';
-import { onMounted, ref, computed } from 'vue';
-import { ChevronDown, ChevronUp, Minus, Plus, Trash2, RefreshCw, Truck } from 'lucide-vue-next';
+import { onMounted, ref, computed, watch } from 'vue';
+import { ChevronDown, ChevronUp, Minus, Pause, Plus, Trash2, RefreshCw, Truck, X } from 'lucide-vue-next';
 
 interface Variante {
     id: number;
@@ -352,6 +352,131 @@ function limpiarPedido() {
     masOpciones.value = false;
 }
 
+// ── Pago ──────────────────────────────────────────────────────────────────────
+// Mixto: se escribe el efectivo y la transferencia completa el resto solo.
+function elegirPago(m: 'efectivo' | 'transferencia' | 'mixto') {
+    if (m === 'mixto') {
+        if (pagoModo.value !== 'mixto') {
+            pagoEfectivo.value = 0;
+            pagoTransferencia.value = total.value;
+        }
+        pagoModo.value = 'mixto';
+        return;
+    }
+    pagoModo.value = 'total';
+    metodoPago.value = m;
+}
+
+const seleccionar = (e: Event) => (e.target as HTMLInputElement).select();
+
+function completarTransferencia() {
+    pagoTransferencia.value = Math.max(0, total.value - (Number(pagoEfectivo.value) || 0));
+}
+
+// Si se agregan o sacan productos con el mixto abierto, se reacomoda la transferencia.
+watch(total, () => {
+    if (pagoModo.value === 'mixto') completarTransferencia();
+});
+
+const diferenciaMixto = computed(() =>
+    pagoModo.value === 'mixto' && tipoPrecio.value !== 'regalo'
+        ? Math.round((Number(pagoEfectivo.value) || 0) + (Number(pagoTransferencia.value) || 0) - total.value)
+        : 0,
+);
+
+// ── Pedidos en espera ─────────────────────────────────────────────────────────
+// Se guardan en este navegador: si se recarga la página no se pierden.
+interface PedidoEnEspera {
+    id: number;
+    lineas: LineaPedido[];
+    mesa: string;
+    notas: string;
+    descuento10: boolean;
+    tipoPrecio: TipoPrecio;
+    pagoModo: 'total' | 'mixto';
+    metodoPago: 'efectivo' | 'transferencia';
+    pagoEfectivo: number;
+    pagoTransferencia: number;
+    total: number;
+    hora: string;
+}
+
+const CLAVE_ESPERA = 'volcano-pos-en-espera';
+
+function leerEnEspera(): PedidoEnEspera[] {
+    try {
+        return JSON.parse(localStorage.getItem(CLAVE_ESPERA) ?? '[]');
+    } catch {
+        return [];
+    }
+}
+
+const enEspera = ref<PedidoEnEspera[]>(leerEnEspera());
+
+watch(
+    enEspera,
+    (v) => {
+        try {
+            localStorage.setItem(CLAVE_ESPERA, JSON.stringify(v));
+        } catch {
+            // Sin almacenamiento (modo privado): quedan solo mientras no se recargue.
+        }
+    },
+    { deep: true },
+);
+
+function fotoPedido(): PedidoEnEspera {
+    return {
+        id: Date.now(),
+        lineas: JSON.parse(JSON.stringify(pedido.value)),
+        mesa: mesa.value,
+        notas: notas.value,
+        descuento10: descuento10.value,
+        tipoPrecio: tipoPrecio.value,
+        pagoModo: pagoModo.value,
+        metodoPago: metodoPago.value,
+        pagoEfectivo: pagoEfectivo.value,
+        pagoTransferencia: pagoTransferencia.value,
+        total: total.value,
+        hora: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+    };
+}
+
+function ponerEnEspera() {
+    if (!pedido.value.length) return;
+    enEspera.value.push(fotoPedido());
+    limpiarPedido();
+}
+
+// Retomar uno: si había otro a medio armar, ese pasa a espera (se intercambian).
+function retomar(id: number) {
+    const p = enEspera.value.find(x => x.id === id);
+    if (!p) return;
+
+    enEspera.value = enEspera.value.filter(x => x.id !== id);
+    if (pedido.value.length) enEspera.value.push(fotoPedido());
+
+    pedido.value = p.lineas;
+    mesa.value = p.mesa;
+    notas.value = p.notas;
+    descuento10.value = p.descuento10;
+    tipoPrecio.value = p.tipoPrecio;
+    pagoModo.value = p.pagoModo;
+    metodoPago.value = p.metodoPago;
+    pagoEfectivo.value = p.pagoEfectivo;
+    pagoTransferencia.value = p.pagoTransferencia;
+    masOpciones.value = !!p.notas || p.descuento10 || p.tipoPrecio !== 'cliente';
+    verPedido.value = true;
+}
+
+function descartarEnEspera(p: PedidoEnEspera) {
+    if (!window.confirm(`¿Borrar el pedido en espera${p.mesa ? ` de ${p.mesa}` : ''} (${fmt(p.total)})?`)) return;
+    enEspera.value = enEspera.value.filter(x => x.id !== p.id);
+}
+
+const nombreEnEspera = (p: PedidoEnEspera) =>
+    p.mesa || p.lineas.find(l => !l.es_extra)?.nombre_producto || p.lineas[0]?.nombre || 'Pedido';
+
 function buildPagos() {
     if (tipoPrecio.value === 'regalo') return [];
 
@@ -376,6 +501,7 @@ async function cobrar() {
     const pagos = buildPagos();
 
     if (!pagos.length && tipoPrecio.value !== 'regalo') return;
+    if (diferenciaMixto.value !== 0) return;
 
     const items = pedido.value
         .filter(l => l.tipo === 'variante')
@@ -654,6 +780,9 @@ async function avanzarEstado(venta: Venta) {
                         {{ cantidadTotal }}
                     </span>
                     Ver pedido
+                    <span v-if="enEspera.length" class="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-bold text-black">
+                        {{ enEspera.length }} en espera
+                    </span>
                 </span>
                 <span class="text-xl font-black">{{ fmt(total) }}</span>
             </button>
@@ -678,13 +807,49 @@ async function avanzarEstado(venta: Venta) {
                                 </button>
                                 Pedido
                             </span>
-                            <button
-                                class="h-10 px-3 rounded-lg text-sm text-muted-foreground hover:bg-muted flex items-center gap-1"
-                                @click="pedirLimpiar"
-                            >
-                                <Trash2 class="w-4 h-4" />
-                                Limpiar
-                            </button>
+                            <div class="flex items-center gap-1">
+                                <button
+                                    v-if="pedido.length"
+                                    class="h-10 px-3 rounded-lg border border-amber-500/50 text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 flex items-center gap-1"
+                                    @click="ponerEnEspera"
+                                >
+                                    <Pause class="w-4 h-4" />
+                                    En espera
+                                </button>
+                                <button
+                                    class="h-10 px-3 rounded-lg text-sm text-muted-foreground hover:bg-muted flex items-center gap-1"
+                                    @click="pedirLimpiar"
+                                >
+                                    <Trash2 class="w-4 h-4" />
+                                    Limpiar
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Pedidos en espera: tocar uno lo retoma -->
+                        <div v-if="enEspera.length" class="flex flex-col gap-1.5">
+                            <p class="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                                En espera ({{ enEspera.length }})
+                            </p>
+                            <div class="no-scrollbar flex gap-2 overflow-x-auto">
+                                <div
+                                    v-for="p in enEspera"
+                                    :key="p.id"
+                                    class="flex shrink-0 items-stretch overflow-hidden rounded-lg border-2 border-amber-500/50 bg-amber-500/10"
+                                >
+                                    <button class="flex flex-col items-start px-3 py-1.5 text-left hover:bg-amber-500/20" @click="retomar(p.id)">
+                                        <span class="max-w-36 truncate text-sm font-semibold">{{ nombreEnEspera(p) }}</span>
+                                        <span class="text-xs text-muted-foreground">{{ fmt(p.total) }} · {{ p.hora }}</span>
+                                    </button>
+                                    <button
+                                        class="flex w-8 items-center justify-center border-l border-amber-500/30 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                        aria-label="Borrar pedido en espera"
+                                        @click="descartarEnEspera(p)"
+                                    >
+                                        <X class="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Mesa -->
@@ -776,43 +941,62 @@ async function avanzarEstado(venta: Venta) {
                             Regalo: no se cobra nada.
                         </p>
 
-                        <div v-else-if="pagoModo === 'total'" class="grid grid-cols-2 gap-2">
-                            <button
-                                class="h-14 rounded-xl border-2 text-lg font-semibold transition-colors"
-                                :class="metodoPago === 'efectivo' ? 'bg-green-600 text-white border-green-600' : 'border-input hover:bg-muted'"
-                                @click="metodoPago = 'efectivo'"
-                            >
-                                💵 Efectivo
-                            </button>
-                            <button
-                                class="h-14 rounded-xl border-2 text-lg font-semibold transition-colors"
-                                :class="metodoPago === 'transferencia' ? 'bg-sky-600 text-white border-sky-600' : 'border-input hover:bg-muted'"
-                                @click="metodoPago = 'transferencia'"
-                            >
-                                📱 Transf.
-                            </button>
-                        </div>
+                        <template v-else>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button
+                                    class="h-14 rounded-xl border-2 text-base sm:text-lg font-semibold transition-colors"
+                                    :class="pagoModo === 'total' && metodoPago === 'efectivo' ? 'bg-green-600 text-white border-green-600' : 'border-input hover:bg-muted'"
+                                    @click="elegirPago('efectivo')"
+                                >
+                                    💵 Efectivo
+                                </button>
+                                <button
+                                    class="h-14 rounded-xl border-2 text-base sm:text-lg font-semibold transition-colors"
+                                    :class="pagoModo === 'total' && metodoPago === 'transferencia' ? 'bg-sky-600 text-white border-sky-600' : 'border-input hover:bg-muted'"
+                                    @click="elegirPago('transferencia')"
+                                >
+                                    📱 Transf.
+                                </button>
+                                <button
+                                    class="h-14 rounded-xl border-2 text-base sm:text-lg font-semibold transition-colors"
+                                    :class="pagoModo === 'mixto' ? 'bg-violet-600 text-white border-violet-600' : 'border-input hover:bg-muted'"
+                                    @click="elegirPago('mixto')"
+                                >
+                                    💵+📱 Mixto
+                                </button>
+                            </div>
 
-                        <div v-else class="flex flex-col gap-2">
-                            <label class="flex items-center gap-2">
-                                <span class="text-base w-28 shrink-0">💵 Efectivo</span>
-                                <input
-                                    type="number"
-                                    v-model.number="pagoEfectivo"
-                                    min="0"
-                                    class="w-full h-11 text-base rounded-lg border border-input bg-background px-3"
-                                />
-                            </label>
-                            <label class="flex items-center gap-2">
-                                <span class="text-base w-28 shrink-0">📱 Transf.</span>
-                                <input
-                                    type="number"
-                                    v-model.number="pagoTransferencia"
-                                    min="0"
-                                    class="w-full h-11 text-base rounded-lg border border-input bg-background px-3"
-                                />
-                            </label>
-                        </div>
+                            <div v-if="pagoModo === 'mixto'" class="flex flex-col gap-2 rounded-xl border-2 border-violet-500/40 p-2">
+                                <label class="flex items-center gap-2">
+                                    <span class="text-base w-28 shrink-0">💵 Efectivo</span>
+                                    <input
+                                        type="number"
+                                        inputmode="numeric"
+                                        v-model.number="pagoEfectivo"
+                                        min="0"
+                                        placeholder="0"
+                                        class="w-full h-11 text-lg font-semibold rounded-lg border border-input bg-background px-3"
+                                        @input="completarTransferencia"
+                                        @focus="seleccionar"
+                                    />
+                                </label>
+                                <label class="flex items-center gap-2">
+                                    <span class="text-base w-28 shrink-0">📱 Transf.</span>
+                                    <input
+                                        type="number"
+                                        inputmode="numeric"
+                                        v-model.number="pagoTransferencia"
+                                        min="0"
+                                        class="w-full h-11 text-lg font-semibold rounded-lg border border-input bg-background px-3"
+                                        @focus="seleccionar"
+                                    />
+                                </label>
+                                <p v-if="diferenciaMixto !== 0" class="text-sm text-center font-medium text-destructive">
+                                    {{ diferenciaMixto < 0 ? `Faltan ${fmt(-diferenciaMixto)}` : `Sobran ${fmt(diferenciaMixto)}` }} para llegar a {{ fmt(total) }}
+                                </p>
+                                <p v-else class="text-xs text-center text-muted-foreground">Escribí el efectivo: la transferencia se completa sola.</p>
+                            </div>
+                        </template>
 
                         <!-- Más opciones: lo que se usa poco queda escondido -->
                         <button
@@ -837,23 +1021,6 @@ async function avanzarEstado(venta: Venta) {
                                 </button>
                             </div>
 
-                            <div v-if="tipoPrecio !== 'regalo'" class="grid grid-cols-2 gap-1">
-                                <button
-                                    class="h-9 text-sm rounded-md border transition-colors"
-                                    :class="pagoModo === 'total' ? 'bg-primary text-primary-foreground border-primary' : 'border-input hover:bg-muted'"
-                                    @click="pagoModo = 'total'"
-                                >
-                                    Un método
-                                </button>
-                                <button
-                                    class="h-9 text-sm rounded-md border transition-colors"
-                                    :class="pagoModo === 'mixto' ? 'bg-primary text-primary-foreground border-primary' : 'border-input hover:bg-muted'"
-                                    @click="pagoModo = 'mixto'"
-                                >
-                                    Mixto
-                                </button>
-                            </div>
-
                             <label v-if="tipoPrecio === 'cliente'" class="flex items-center gap-2 text-sm cursor-pointer">
                                 <input type="checkbox" v-model="descuento10" class="w-4 h-4 rounded" />
                                 Descuento 10%
@@ -869,7 +1036,7 @@ async function avanzarEstado(venta: Venta) {
 
                         <Button
                             class="w-full h-16 text-xl font-bold rounded-xl"
-                            :disabled="!pedido.length || loading"
+                            :disabled="!pedido.length || loading || diferenciaMixto !== 0"
                             @click="cobrar"
                         >
                             <span v-if="loading">Procesando...</span>
