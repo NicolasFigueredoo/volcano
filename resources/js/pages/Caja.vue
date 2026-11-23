@@ -519,29 +519,68 @@ async function buscarRango() {
 
 // ── Exportar ───────────────────────────────────────────────────────────────────
 
-function exportar() {
+// ── Exportar / controlar pedidos de un día ────────────────────────────────────
+const pagoDe = (v: Venta, metodo: string) =>
+    v.pagos.filter(p => p.metodo === metodo).reduce((acc, p) => acc + Number(p.monto), 0);
+
+// Pagos registrados − total del pedido: si no da 0, la caja no cierra.
+const diferenciaPago = (v: Venta) =>
+    Math.round(pagoDe(v, 'efectivo') + pagoDe(v, 'transferencia') - Number(v.total));
+
+// Pedidos que conviene revisar cuando la plata no cierra.
+function pedidosARevisar(ventas: Venta[]) {
+    return ventas
+        .filter(v => v.estado !== 'anulado' && v.tipo_precio !== 'regalo' && diferenciaPago(v) !== 0)
+        .map(v => ({ venta: v, diferencia: diferenciaPago(v) }));
+}
+
+const revisarHoy = computed(() => pedidosARevisar(ventasHoy.value));
+
+function exportarPedidos(ventas: Venta[], fechaArchivo: string) {
     if (!esAdmin.value) return;
 
-    const rows = [
-        ['#', 'Hora', 'Mesa', 'Descripción', 'Estado', 'Efectivo', 'Transferencia', 'Total'],
-        ...ventasHoy.value
-            .filter(v => v.estado !== 'anulado')
-            .map(v => [
-                v.numero_orden,
-                horaVenta(v.created_at),
-                v.mesa ?? '-',
-                v.notas ?? '-',
-                estadoLabel[v.estado] ?? v.estado,
-                v.pagos.find(p => p.metodo === 'efectivo')?.monto ?? 0,
-                v.pagos.find(p => p.metodo === 'transferencia')?.monto ?? 0,
-                v.total,
-            ]),
+    // Punto y coma + BOM: Excel en español lo abre en columnas y con tildes.
+    const celda = (x: unknown) => {
+        const s = String(x ?? '');
+        return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const ordenadas = [...ventas].sort((a, b) => a.numero_orden - b.numero_orden);
+    const validas = ordenadas.filter(v => v.estado !== 'anulado');
+    const suma = (f: (v: Venta) => number) => validas.reduce((acc, v) => acc + f(v), 0);
+
+    const rows: unknown[][] = [
+        ['#', 'Hora', 'Mesa', 'Productos', 'Estado', 'Tipo', 'Efectivo', 'Transferencia', 'Total', 'Pagos - Total', 'Cajero', 'Nota'],
+        ...ordenadas.map(v => [
+            v.numero_orden,
+            horaVenta(v.created_at),
+            v.mesa ?? '',
+            v.detalles.map(d => `${d.cantidad}x ${d.nombre_snapshot}`).join(' + '),
+            v.estado === 'anulado' ? 'ANULADO' : (estadoLabel[v.estado] ?? v.estado),
+            v.tipo_precio ?? 'cliente',
+            pagoDe(v, 'efectivo'),
+            pagoDe(v, 'transferencia'),
+            Number(v.total),
+            v.estado === 'anulado' ? '' : diferenciaPago(v) || '',
+            v.user?.name ?? '',
+            v.notas ?? '',
+        ]),
+        [],
+        ['', '', '', `TOTALES (${validas.length} pedidos, sin anulados)`, '', '',
+            suma(v => pagoDe(v, 'efectivo')), suma(v => pagoDe(v, 'transferencia')), suma(v => Number(v.total)),
+            suma(v => (v.tipo_precio === 'regalo' ? 0 : diferenciaPago(v))) || ''],
     ];
 
+    const csv = '﻿' + rows.map(r => r.map(celda).join(';')).join('\r\n');
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([rows.map(r => r.join(',')).join('\n')], { type: 'text/csv' }));
-    a.download = `caja_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `pedidos_${fechaArchivo}.csv`;
     a.click();
+    URL.revokeObjectURL(a.href);
+}
+
+function exportar() {
+    exportarPedidos(ventasHoy.value, fechaInput(data.value?.caja?.fecha_operativa ?? null) || new Date().toISOString().slice(0, 10));
 }
 
 onMounted(cargar);
@@ -930,12 +969,30 @@ onMounted(cargar);
                 </CardContent>
             </Card>
 
-            <!-- Exportar CSV -->
+            <!-- Exportar pedidos del día -->
             <div v-if="esAdmin" class="flex gap-2">
                 <Button variant="outline" size="sm" @click="exportar" :disabled="!ventasHoy.length">
-                    <Download class="w-4 h-4 mr-1" /> Exportar CSV
+                    <Download class="w-4 h-4 mr-1" /> Exportar pedidos (Excel)
                 </Button>
             </div>
+
+            <!-- Pedidos cuyos pagos no coinciden con el total -->
+            <Card v-if="esAdmin && revisarHoy.length" class="border-destructive/50">
+                <CardHeader class="pb-2">
+                    <CardTitle class="text-sm text-destructive">⚠ Pedidos donde lo cobrado no coincide con el total</CardTitle>
+                </CardHeader>
+                <CardContent class="flex flex-col gap-1.5">
+                    <div v-for="r in revisarHoy" :key="r.venta.id" class="flex items-center justify-between gap-2 rounded border px-2 py-1.5 text-sm">
+                        <span class="min-w-0 truncate">
+                            <b>#{{ r.venta.numero_orden }}</b> · {{ horaVenta(r.venta.created_at) }} · total {{ fmt(r.venta.total) }}
+                            <span class="text-muted-foreground">(ef. {{ fmt(pagoDe(r.venta, 'efectivo')) }} + tr. {{ fmt(pagoDe(r.venta, 'transferencia')) }})</span>
+                        </span>
+                        <span class="shrink-0 font-semibold tabular-nums" :class="r.diferencia < 0 ? 'text-destructive' : 'text-amber-600'">
+                            {{ r.diferencia < 0 ? 'falta ' + fmt(-r.diferencia) : 'sobra ' + fmt(r.diferencia) }}
+                        </span>
+                    </div>
+                </CardContent>
+            </Card>
 
             <!-- Ventas de hoy (tabla admin) -->
             <Card v-if="esAdmin">
@@ -1329,7 +1386,10 @@ onMounted(cargar);
                             </p>
                         </div>
 
-                        <div class="flex items-center gap-2 shrink-0">
+                        <div class="flex flex-wrap items-center justify-end gap-2">
+                            <Button variant="outline" size="sm" :disabled="!cajaDetalle.ventas.length" @click="exportarPedidos(cajaDetalle.ventas, fechaInput(cajaDetalle.caja.fecha_operativa))">
+                                <Download class="w-4 h-4 mr-1" /> Exportar pedidos
+                            </Button>
                             <Button v-if="cajaDetalle.caja.estado === 'abierta'" variant="destructive" size="sm" @click="cerrarManual(cajaDetalle.caja)" :disabled="loading">
                                 <Lock class="w-4 h-4 mr-1" /> Cerrar manualmente
                             </Button>
@@ -1432,6 +1492,27 @@ onMounted(cargar);
                                         </tr>
                                     </tbody>
                                 </table>
+                            </CardContent>
+                        </Card>
+
+                        <Card v-if="pedidosARevisar(cajaDetalle.ventas).length" class="border-destructive/50">
+                            <CardHeader class="pb-2">
+                                <CardTitle class="text-sm text-destructive">⚠ Pedidos donde lo cobrado no coincide con el total</CardTitle>
+                            </CardHeader>
+                            <CardContent class="flex flex-col gap-1.5">
+                                <div
+                                    v-for="r in pedidosARevisar(cajaDetalle.ventas)"
+                                    :key="r.venta.id"
+                                    class="flex items-center justify-between gap-2 rounded border px-2 py-1.5 text-sm"
+                                >
+                                    <span class="min-w-0 truncate">
+                                        <b>#{{ r.venta.numero_orden }}</b> · {{ horaVenta(r.venta.created_at) }} · total {{ fmt(r.venta.total) }}
+                                        <span class="text-muted-foreground">(ef. {{ fmt(pagoDe(r.venta, 'efectivo')) }} + tr. {{ fmt(pagoDe(r.venta, 'transferencia')) }})</span>
+                                    </span>
+                                    <span class="shrink-0 font-semibold tabular-nums" :class="r.diferencia < 0 ? 'text-destructive' : 'text-amber-600'">
+                                        {{ r.diferencia < 0 ? 'falta ' + fmt(-r.diferencia) : 'sobra ' + fmt(r.diferencia) }}
+                                    </span>
+                                </div>
                             </CardContent>
                         </Card>
 

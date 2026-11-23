@@ -11,10 +11,11 @@ return new class extends Migration
 {
     /**
      * Parrilla, 22/11/2026:
-     * - Bandeja de pollo con arroz a $7.000: 1 pata + 1 muslo (3 kg dan 6
-     *   bandejas → 0,5 kg c/u), porción de arroz $500 y bandeja $500.
-     *   Pata y muslo: 3 kg a $12.000 → $4.000/kg → $2.000 por bandeja.
-     *   Costo total $3.000, deja $4.000.
+     * - Bandeja de pollo: 1 pata + 1 muslo (3 kg dan 6 bandejas → 0,5 kg c/u)
+     *   + bandeja $500. Pata y muslo: 3 kg a $12.000 → $2.000 por bandeja.
+     *   · Con arroz $7.000: arroz $500 → costo $3.000, deja $4.000.
+     *   · Con papas $7.500: papas + aceite + garrafa (~$1.000) → costo
+     *     ~$3.500, deja ~$4.000.
      * - Choripán XL a $4.000: chorizo XL ($1.500 c/u) + pan de sanguche.
      */
     public function up(): void
@@ -40,30 +41,44 @@ return new class extends Migration
         );
 
         // ── Bandeja de pollo con arroz ──────────────────────────────────────
-        if (! Producto::where('nombre', 'Pollo con arroz')->exists()) {
+        if (! Producto::where('nombre', 'Bandeja de pollo')->exists()) {
             $pollo = $insumo('Pata y muslo', 'kg', 4000, 'pollo', true);
             $arroz = $insumo('Porción de arroz', 'unidad', 500, 'varios', false);
             $bandeja = $insumo('Bandeja descartable', 'unidad', 500, 'varios', false);
 
+            // Papas: lo mismo que lleva el cono (porción 150 g + aceite + garrafa).
+            $papas = collect(['Papas', 'Aceite freidora', 'Garrafa'])
+                ->map(fn ($n) => Insumo::where('nombre', $n)->first())
+                ->filter();
+
             $producto = Producto::create([
                 'categoria_id' => $categoria,
-                'nombre' => 'Pollo con arroz',
+                'nombre' => 'Bandeja de pollo',
                 'activo' => true,
                 'orden' => (int) Producto::where('categoria_id', $categoria)->max('orden') + 1,
             ]);
 
-            $variante = $producto->variantes()->create([
-                'nombre' => 'Bandeja',
-                'precio_venta' => 7000,
-                'costo_calculado' => 0,
-                'activo' => true,
-                'orden' => 0,
-            ]);
+            $opciones = [
+                ['Con arroz', 7000, [[$arroz, 1]]],
+                ['Con papas', 7500, $papas->map(fn ($i) => [$i, 1])->all()],
+            ];
 
-            $variante->recetas()->create(['insumo_id' => $pollo->id, 'cantidad' => 0.5]);
-            $variante->recetas()->create(['insumo_id' => $arroz->id, 'cantidad' => 1]);
-            $variante->recetas()->create(['insumo_id' => $bandeja->id, 'cantidad' => 1]);
-            $variante->recalcularCosto();
+            foreach ($opciones as $orden => [$nombre, $precio, $guarnicion]) {
+                $variante = $producto->variantes()->create([
+                    'nombre' => $nombre,
+                    'precio_venta' => $precio,
+                    'costo_calculado' => 0,
+                    'activo' => true,
+                    'orden' => $orden,
+                ]);
+
+                $variante->recetas()->create(['insumo_id' => $pollo->id, 'cantidad' => 0.5]);
+                foreach ($guarnicion as [$ins, $cantidad]) {
+                    $variante->recetas()->create(['insumo_id' => $ins->id, 'cantidad' => $cantidad]);
+                }
+                $variante->recetas()->create(['insumo_id' => $bandeja->id, 'cantidad' => 1]);
+                $variante->recalcularCosto();
+            }
 
             // La compra de hoy: 3 kg a $12.000, 6 bandejas.
             $adminId = User::where('role', 'admin')->orderBy('id')->value('id');
