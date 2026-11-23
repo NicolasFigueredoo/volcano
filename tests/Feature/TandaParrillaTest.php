@@ -152,3 +152,29 @@ it('el cajero elimina pedidos de la caja abierta y salen del sobre, pero no de u
     test()->actingAs($ctx['cajero'])->deleteJson("/api/caja/ventas/{$otra->id}")->assertForbidden();
     test()->actingAs($ctx['admin'])->deleteJson("/api/caja/ventas/{$otra->id}")->assertOk();
 });
+
+it('al terminarse pasa los pedidos al costo real y corrige la ganancia de la caja cerrada', function () {
+    $ctx = escenarioTanda();
+
+    test()->actingAs($ctx['admin'])->postJson('/api/tandas', [
+        'insumo_id' => $ctx['carne']->id, 'cantidad' => 4, 'total' => 28000, 'porciones_estimadas' => 8,
+    ])->assertCreated();
+
+    venderSanguches($ctx, 6);
+
+    // Estimado: 28.000 ÷ 8 = 3.500 de carne + 170 de pan.
+    expect((float) \App\Models\DetalleVenta::first()->costo_snapshot)->toEqual(3670.0);
+
+    test()->actingAs($ctx['cajero'])->postJson('/api/caja/cerrar')->assertOk();
+    $caja = Caja::firstOrFail();
+    expect((float) $caja->fresh()->costo_insumos)->toEqual(22020.0);
+
+    test()->actingAs($ctx['cajero'])->postJson('/api/tandas/'.Tanda::firstOrFail()->id.'/cerrar')->assertOk();
+
+    // Real: 28.000 ÷ 6 vendidos = 4.666,67 + 170 de pan.
+    expect((float) \App\Models\DetalleVenta::first()->costo_snapshot)->toEqual(4836.67)
+        ->and(round((float) $caja->fresh()->costo_insumos))->toEqual(29020.0);
+
+    // El sobre no cambia: 21.000 apartados + 7.000 de ajuste.
+    expect((float) VentaInsumo::where('insumo_id', $ctx['carne']->id)->sum('subtotal'))->toEqual(21000.0);
+});

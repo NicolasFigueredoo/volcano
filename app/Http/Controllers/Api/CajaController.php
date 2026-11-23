@@ -785,7 +785,8 @@ class CajaController extends Controller
      * Recalcula solo los totales (sin tocar estado/resumen). Se usa después
      * de editar/anular una venta que pertenece a una caja ya existente.
      */
-    private function recalcularTotalesSolo(Caja $caja): void
+    /** Público: también lo usa TandaService al corregir el costo real de una compra. */
+    public function recalcularTotalesSolo(Caja $caja): void
     {
         $ventas = Venta::where('caja_id', $caja->id)
             ->with(['detalles', 'pagos'])

@@ -162,6 +162,7 @@ class TandaService
             }
 
             self::aplicarCosto($tanda->insumo);
+            self::recostear($tanda->fresh());
 
             return $tanda->fresh();
         });
@@ -181,9 +182,65 @@ class TandaService
             ]);
 
             self::aplicarCosto($tanda->insumo);
+            self::recostear($tanda->fresh());
 
             return $tanda->fresh();
         });
+    }
+
+    /**
+     * Con la compra terminada ya se sabe cuánto costó de verdad cada sanguche:
+     * lo pagado ÷ lo vendido. Se reescribe el costo de esos pedidos (lo que
+     * usa la ganancia de la caja) y se recalculan las cajas cerradas.
+     *
+     * No toca venta_insumos: el sobre ya se ajustó con la línea de ajuste.
+     */
+    public static function recostear(Tanda $tanda): void
+    {
+        $vendido = (float) $tanda->cantidad_vendida;
+
+        if ($tanda->abierta || $vendido <= 0) {
+            return;
+        }
+
+        $real = (float) $tanda->total / $vendido; // por unidad de receta (kg / u.)
+
+        $ventas = Venta::with(['detalles.variante.recetas.insumo', 'insumos'])
+            ->whereIn('id', $tanda->ventaInsumos()->select('venta_id'))
+            ->get();
+
+        $cajas = [];
+
+        foreach ($ventas as $venta) {
+            // Costo histórico de los demás insumos (pan, etc.) en esa venta.
+            $costos = $venta->insumos->pluck('costo_unitario', 'insumo_id');
+
+            foreach ($venta->detalles as $detalle) {
+                $recetas = $detalle->variante?->recetas ?? collect();
+
+                if (! $recetas->contains('insumo_id', $tanda->insumo_id)) {
+                    continue;
+                }
+
+                $costo = $recetas->sum(fn (Receta $r) => (float) $r->cantidad * (
+                    $r->insumo_id === $tanda->insumo_id
+                        ? $real
+                        : (float) ($costos[$r->insumo_id] ?? $r->insumo?->costo_unitario ?? 0)
+                ));
+
+                $detalle->update(['costo_snapshot' => round($costo, 2)]);
+            }
+
+            if ($venta->caja_id) {
+                $cajas[$venta->caja_id] = true;
+            }
+        }
+
+        // Las abiertas se calculan en vivo; las cerradas tienen los totales guardados.
+        Caja::whereIn('id', array_keys($cajas))
+            ->where('estado', '!=', 'abierta')
+            ->get()
+            ->each(fn (Caja $caja) => app(\App\Http\Controllers\Api\CajaController::class)->recalcularTotalesSolo($caja));
     }
 
     /** Deshace un "se terminó" tocado por error. */
@@ -327,10 +384,16 @@ class TandaService
                     $costoDetalles += (float) $d->costo_snapshot * (int) $d->cantidad;
                 }
 
-                // Pan y demás: el costo del sanguche menos la carne.
-                $m['otros_insumos'] += max(0, $costoDetalles - (float) $fila->subtotal);
+                // Pan y demás: el costo del sanguche menos la carne. Terminada
+                // la compra, la carne del pedido ya está al costo real.
+                $carne = ! $tanda->abierta && (float) $tanda->cantidad_vendida > 0
+                    ? (float) $fila->cantidad * (float) $tanda->total / (float) $tanda->cantidad_vendida
+                    : (float) $fila->subtotal;
+                $m['otros_insumos'] += max(0, $costoDetalles - $carne);
             }
 
+            // El costo de cada pedido se guarda con centavos: se evita arrastrar el redondeo.
+            $m['otros_insumos'] = round($m['otros_insumos']);
             $out[(int) $tandaId] = $m;
         }
 
